@@ -1,0 +1,3 @@
+# Agent runtime artifacts — machine-local, never committed
+.codegraph
+.omo/
