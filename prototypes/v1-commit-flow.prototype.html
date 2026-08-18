@@ -25,6 +25,15 @@
     Ticket    — the app cannot label the chosen apps itself; it holds opaque tokens.
 
   State is in memory only. Nothing persists. Reload resets.
+
+  AMENDED after the verdict: B won wholesale. Two changes were made to B and to B only,
+  so the winning flow can be seen rather than imagined:
+    1. commit   — the range slider is gone. It looked continuous but snapped to seven presets,
+                  which made committing a week a drag rather than a decision. Now a discrete
+                  tapped list, with the resulting deadline in words beneath it.
+    2. firstrun — the restrictions sentence is out of grey whisper and into full weight. With
+                  no setup ritual (ADR 0001), this is the only moment consent can be informed.
+  A and C are untouched: they are the losing alternatives, kept exactly as they were judged.
 -->
 <style>
   :root {
@@ -185,6 +194,12 @@
   .v-b .dial .num { font-size: 78px; font-weight: 200; letter-spacing: -.04em; line-height: 1; }
   .v-b .dial .unit { font-size: 14px; color: #6f6f72; font-weight: 300; margin-top: 8px; letter-spacing: .18em; text-transform: uppercase; }
   .v-b input[type=range] { width: 100%; margin: 26px 0 6px; accent-color: #ededed; }
+  .v-b .durlist { display: flex; flex-direction: column; margin: 0 0 20px; }
+  .v-b .durrow { background: none; border: 0; border-bottom: 1px solid #191a1c; color: #55555a; font-family: inherit; font-size: 17px; font-weight: 300; text-align: left; padding: 13px 2px; cursor: pointer; }
+  .v-b .durrow:last-child { border-bottom: 0; }
+  .v-b .durrow:hover { color: #8d8d90; }
+  .v-b .durrow.on { color: #ededed; }
+  .v-b .untilline { font-size: 15px; font-weight: 300; color: #9a9a9e; padding: 2px 2px 0; }
   .v-b .hold { position: relative; border: 1px solid #313134; overflow: hidden; user-select: none; cursor: pointer; }
   .v-b .hold .fill { position: absolute; inset: 0; background: #ededed; width: 0%; transition: width .05s linear; }
   .v-b .hold .lbl { position: relative; text-align: center; padding: 19px 0; font-size: 14px; letter-spacing: .18em; text-transform: uppercase; font-weight: 300; mix-blend-mode: difference; color: #ededed; }
@@ -549,7 +564,8 @@ const B = {
     <div class="say">This blocks what you choose,<br>until a time you choose.</div>
     <div class="say" style="margin-top:18px;color:#8d8d90">You will not be able to undo it.</div>
     <div class="spacer"></div>
-    <div class="whisper" style="margin-bottom:22px">While it runs: no app on this phone can be deleted, and the clock stays automatic. The way out is in Settings, and it is recorded.</div>
+    <div class="say" style="font-size:16px">While it runs, no app on this phone can be deleted — not just this one — and the clock stays automatic.</div>
+    <div class="whisper" style="margin:14px 0 22px">The way out is in Settings. It is recorded.</div>
     <button class="btn" data-act="ask-auth">Begin</button>
   </div>${homebar()}${state.sheet === "auth" ? authAlert() : ""}`,
 
@@ -570,16 +586,13 @@ const B = {
 
   commit: () => {
     if (running()) return B.shieldedApp();
-    const idx = DUR_PRESETS.indexOf(state.durationMin);
     const end = now() + state.durationMin * 60000;
+    const rows = DUR_PRESETS.map(m =>
+      `<button class="durrow ${state.durationMin === m ? "on" : ""}" data-act="dur" data-m="${m}">${durWords(m)}</button>`).join("");
     return `${statusbar()}<div class="content">
       <div class="spacer"></div>
-      <div class="dial">
-        <div class="num">${state.durationMin < 60 ? state.durationMin : state.durationMin < 1440 ? state.durationMin / 60 : state.durationMin / 1440}</div>
-        <div class="unit">${state.durationMin < 60 ? "minutes" : state.durationMin < 1440 ? "hours" : "days"}</div>
-      </div>
-      <input type="range" min="0" max="${DUR_PRESETS.length - 1}" step="1" value="${idx < 0 ? 2 : idx}" data-act="dur-range" />
-      <div class="whisper" style="text-align:center">until ${fmtDeadline(end)}</div>
+      <div class="durlist">${rows}</div>
+      <div class="untilline">until ${fmtDeadline(end)}</div>
       <div class="spacer"></div>
       <div class="hold" data-act="hold" data-ms="1800"><div class="fill"></div><div class="lbl">hold to commit</div></div>
       <div class="whisper" style="text-align:center;margin-top:14px">${targetCount()} things · this device only</div>
@@ -759,7 +772,7 @@ const VARIANTS = { A, B, C };
 const NOTES = {
   firstrun: {
     A: "<b>Consent as a contract.</b> The collateral damage is stated as numbered clauses <i>before</i> the iOS prompt, so the device-wide 'no app can be deleted' fact is impossible to miss. Long — highest-abandonment screen carries the most words. Does the ceremony read as serious, or as a EULA nobody scrolls?",
-    B: "<b>Two sentences and a button.</b> The collateral sits in grey type most people won't read. Fastest to authorization, weakest informed consent. Is that trade acceptable given no setup ritual exists to fall back on?",
+    B: "<b>Two sentences, the collateral at full weight, then a button.</b> <i>Amended after the verdict</i> — the restrictions line used to sit in grey whisper type. With no setup ritual to fall back on, first run is the only moment consent can be informed, so the one genuinely surprising consequence now reads at the same weight as everything else on the screen.",
     C: "<b>A preflight panel.</b> Authorization is a status LED, restrictions are named by their API names, and the ceiling is printed in amber. Reads as trustworthy to a developer — does it read as intimidating to a TestFlight tester?",
   },
   targets: {
@@ -769,7 +782,7 @@ const NOTES = {
   },
   commit: {
     A: "<b>Press and hold to sign.</b> A signature line with ink. The irreversibility clause names the exact date in bold directly above the hold. Ceremony as the anti-impulse mechanism.",
-    B: "<b>Hold anywhere.</b> The hold <i>is</i> the confirmation — no dialog, no checkbox. Whole screen is a dial and a deadline in words. Least friction of the three; the risk is committing 7 days by accident.",
+    B: "<b>A list you tap, then hold to commit.</b> <i>Amended after the verdict</i> — the slider is gone. It looked continuous but snapped to seven presets, so it was a costume over a list, and one drag to the end bought the maximum commitment for the effort of the minimum. Discrete rows make every duration a deliberate act and leave the hold as the only continuous gesture on the screen.",
     C: "<b>Four consequences, ticked one by one, then ARM.</b> The button is disabled until every box is checked. Highest friction, and the only variant that guarantees the user has read the device-wide deletion block.",
   },
   shielded: {
