@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>freedomfrom — v1 commit flow prototype</title>
+<!--
+  THROWAWAY PROTOTYPE — not production code. Ticket #11 "Prototype the v1 commit flow".
+
+  Plan: three radically different personalities of the v1 commit flow, each rendering all
+  seven steps inside an iPhone frame, switchable via ?variant=A|B|C (floating bar + arrow keys).
+
+    A — The Contract    formal, ceremonial. Committing is signing something.
+    B — The Quiet Room  minimal, monastic. Almost no words. The hold is the confirmation.
+    C — The Instrument  utilitarian, transparent. Shows the machinery: deadline, restrictions, degraded.
+
+  Constraints inherited (do not violate in any variant):
+    ADR 0001 — app-applied restrictions only; NO setup ritual; NO in-app escape hatch;
+               denyAppRemoval + requireAutomaticDateAndTime always on for the duration;
+               breaks leave a quiet record; re-arm is silent and non-confrontational;
+               honest ceiling: "resists casual bypass while authorized; cannot prevent a determined bypass".
+    ADR 0002 — deadline is absolute wall-clock; unresolvable token degrades COVERAGE, never DURATION;
+               state in Keychain, survives deletion; per-device, no cross-device sync.
+    Research  — a commitment interval is 15 minutes to 7 days, hard limits.
+    Ticket    — the app cannot label the chosen apps itself; it holds opaque tokens.
+
+  State is in memory only. Nothing persists. Reload resets.
+-->
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1b1f26;
+    --panel-2: #232833;
+    --line: #2e3540;
+    --ink: #e6eaf0;
+    --dim: #8d97a6;
+    --accent: #7dd3fc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 20px 96px;
+  }
+
+  .banner {
+    max-width: 1180px; margin: 0 auto 16px; padding: 8px 14px;
+    background: repeating-linear-gradient(45deg, #3b2a05, #3b2a05 12px, #3d2c06 12px, #3d2c06 24px);
+    border: 1px solid #6b4c0a; border-radius: 8px; color: #fcd34d;
+    font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .banner b { color: #fde68a; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 430px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+
+  /* ---------- phone ---------- */
+  .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .rendered-by {
+    font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--panel);
+  }
+  .rendered-by b { color: var(--accent); font-weight: 600; }
+  .phone {
+    width: 390px; height: 780px; border-radius: 46px; padding: 11px;
+    background: #05070a; box-shadow: 0 0 0 2px #2c333d, 0 26px 60px rgba(0,0,0,.65);
+    position: relative; flex: none;
+  }
+  .screen {
+    position: relative; width: 100%; height: 100%; border-radius: 36px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .statusbar {
+    height: 46px; flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 26px 0; font-size: 13px; font-weight: 600; opacity: .85;
+  }
+  .content { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .content::-webkit-scrollbar { width: 0; }
+  .homebar { height: 22px; flex: none; display: flex; align-items: center; justify-content: center; }
+  .homebar i { display: block; width: 128px; height: 5px; border-radius: 3px; background: currentColor; opacity: .3; }
+
+  /* fake system sheets (iOS-flavoured, deliberately generic) */
+  .sysoverlay { position: absolute; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 30; }
+  .sysalert {
+    width: 274px; background: rgba(248,248,248,.96); color: #000; border-radius: 14px; overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; text-align: center;
+  }
+  .sysalert .t { padding: 19px 16px 4px; font-size: 17px; font-weight: 600; }
+  .sysalert .m { padding: 0 16px 16px; font-size: 13px; line-height: 1.35; color: #333; }
+  .sysalert .row { display: flex; border-top: .5px solid #c8c7cc; }
+  .sysalert button { flex: 1; padding: 11px 4px; background: none; border: 0; font-size: 17px; color: #007aff; cursor: pointer; }
+  .sysalert button + button { border-left: .5px solid #c8c7cc; font-weight: 600; }
+  .syssheet {
+    position: absolute; left: 0; right: 0; bottom: 0; top: 60px; z-index: 30;
+    background: #f2f2f7; color: #000; border-radius: 14px 14px 0 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; display: flex; flex-direction: column;
+  }
+  .syssheet header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: .5px solid #c8c7cc; }
+  .syssheet header b { font-size: 16px; }
+  .syssheet header button { background: none; border: 0; color: #007aff; font-size: 16px; cursor: pointer; }
+  .syssheet .body { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .syssheet .grp { background: #fff; margin: 10px 12px; border-radius: 10px; overflow: hidden; }
+  .syssheet .it { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: .5px solid #e5e5ea; font-size: 15px; cursor: pointer; }
+  .syssheet .it:last-child { border-bottom: 0; }
+  .syssheet .it .ic { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg,#9ca3af,#4b5563); flex: none; }
+  .syssheet .it .ck { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #c7c7cc; }
+  .syssheet .it.on .ck { background: #007aff; border-color: #007aff; position: relative; }
+  .syssheet .it.on .ck::after { content: "✓"; position: absolute; inset: 0; color: #fff; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .syssheet .note { padding: 4px 26px 12px; font-size: 12px; color: #6b6b70; }
+
+  /* the app behind a shield */
+  .fakeapp { position: absolute; inset: 0; }
+  .fakeapp .hdr { height: 92px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); }
+  .fakeapp .rows { padding: 12px; display: grid; gap: 10px; }
+  .fakeapp .rows div { height: 58px; border-radius: 10px; background: #d8dce3; }
+  .fakeapp.blur { filter: blur(9px) saturate(.6); background: #eceff3; }
+
+  /* ---------- variant A · The Contract ---------- */
+  .v-a { background: #f6f1e6; color: #241f1a; font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
+  .v-a .statusbar { color: #241f1a; }
+  .v-a .content { padding: 6px 26px 20px; }
+  .v-a .eyebrow { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: #8a7e6d; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .v-a h1 { font-size: 27px; line-height: 1.15; margin: 8px 0 14px; font-weight: 400; }
+  .v-a p { font-size: 15px; line-height: 1.55; margin: 0 0 13px; }
+  .v-a .rule { height: 1px; background: #d8cdb8; margin: 16px 0; }
+  .v-a ol.clauses { margin: 0 0 16px; padding-left: 20px; }
+  .v-a ol.clauses li { font-size: 14px; line-height: 1.5; margin-bottom: 11px; }
+  .v-a .clause-strong { font-weight: 700; }
+  .v-a .btn {
+    display: block; width: 100%; padding: 15px; border: 1px solid #241f1a; background: #241f1a; color: #f6f1e6;
+    font-family: inherit; font-size: 16px; border-radius: 2px; cursor: pointer; letter-spacing: .02em;
+  }
+  .v-a .btn.ghost { background: none; color: #241f1a; }
+  .v-a .btn[disabled] { opacity: .3; cursor: not-allowed; }
+  .v-a .schedule { border: 1px solid #d8cdb8; background: #fffdf7; }
+  .v-a .schedule .li { display: flex; gap: 10px; padding: 11px 13px; border-bottom: 1px solid #ece3d2; font-size: 14px; align-items: baseline; }
+  .v-a .schedule .li:last-child { border-bottom: 0; }
+  .v-a .schedule .li .n { font-size: 11px; color: #a2957f; width: 20px; flex: none; }
+  .v-a .schedule .li .w { margin-left: auto; font-size: 11px; color: #a2957f; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .v-a .empty { padding: 22px 13px; text-align: center; color: #a2957f; font-style: italic; font-size: 14px; }
+  .v-a input[type=text] { width: 100%; padding: 11px 12px; border: 1px solid #d8cdb8; background: #fffdf7; font-family: inherit; font-size: 15px; border-radius: 2px; }
+  .v-a .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+  .v-a .chip { border: 1px solid #241f1a; padding: 7px 13px; font-size: 14px; cursor: pointer; background: none; font-family: inherit; border-radius: 2px; }
+  .v-a .chip.on { background: #241f1a; color: #f6f1e6; }
+  .v-a .term { text-align: center; padding: 18px 0 6px; }
+  .v-a .term .big { font-size: 40px; letter-spacing: -.01em; }
+  .v-a .term .until { font-size: 14px; color: #6b6154; margin-top: 6px; }
+  .v-a .sign { border: 1px solid #241f1a; background: #fffdf7; padding: 12px; position: relative; overflow: hidden; user-select: none; cursor: pointer; }
+  .v-a .sign .fill { position: absolute; inset: 0; background: #1f3a5f; width: 0%; transition: width .05s linear; }
+  .v-a .sign .lbl { position: relative; text-align: center; font-size: 15px; padding: 10px 0; }
+  .v-a .sign.done .lbl { color: #fffdf7; }
+  .v-a .sigline { border-bottom: 1px solid #241f1a; margin: 26px 0 6px; height: 42px; display: flex; align-items: flex-end; justify-content: center; }
+  .v-a .sigline span { font-family: "Segoe Script", "Brush Script MT", cursive; font-size: 26px; color: #1f3a5f; }
+  .v-a .fine { font-size: 12px; color: #7a6f5f; line-height: 1.5; }
+  .v-a .stamp { border: 3px double #7a2d2d; color: #7a2d2d; padding: 10px 16px; display: inline-block; transform: rotate(-6deg); letter-spacing: .18em; text-transform: uppercase; font-size: 15px; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .v-a .shieldcard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 26px; background: rgba(20,17,14,.55); }
+  .v-a .shieldcard .card { background: #f6f1e6; padding: 26px 24px; border: 1px solid #241f1a; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+  .v-a table.routes { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .v-a table.routes td { border-top: 1px solid #d8cdb8; padding: 10px 0; vertical-align: top; }
+  .v-a table.routes td:first-child { width: 22px; color: #a2957f; }
+
+  /* ---------- variant B · The Quiet Room ---------- */
+  .v-b { background: #0a0a0b; color: #ededed; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .v-b .statusbar { color: #ededed; opacity: .5; }
+  .v-b .content { padding: 20px 30px 26px; display: flex; flex-direction: column; }
+  .v-b .spacer { flex: 1; }
+  .v-b .say { font-size: 20px; line-height: 1.5; font-weight: 300; letter-spacing: .01em; }
+  .v-b .whisper { font-size: 13px; line-height: 1.65; color: #6f6f72; font-weight: 300; }
+  .v-b .btn {
+    display: block; width: 100%; padding: 17px; background: none; border: 1px solid #313134; color: #ededed;
+    font-family: inherit; font-size: 15px; font-weight: 300; letter-spacing: .1em; cursor: pointer; border-radius: 0;
+  }
+  .v-b .btn:hover { border-color: #5a5a5e; }
+  .v-b .btn[disabled] { opacity: .25; cursor: not-allowed; }
+  .v-b .count { font-size: 64px; font-weight: 200; letter-spacing: -.03em; line-height: 1; }
+  .v-b .countlbl { font-size: 13px; color: #6f6f72; font-weight: 300; margin-top: 10px; }
+  .v-b .dots { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0; }
+  .v-b .dots i { width: 34px; height: 34px; border-radius: 9px; background: #1c1c1f; display: block; }
+  .v-b .dots i.on { background: #33333a; }
+  .v-b input[type=text] { width: 100%; background: none; border: 0; border-bottom: 1px solid #313134; color: #ededed; padding: 11px 0; font-family: inherit; font-size: 15px; font-weight: 300; }
+  .v-b input[type=text]::placeholder { color: #48484c; }
+  .v-b .dial { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
+  .v-b .dial .num { font-size: 78px; font-weight: 200; letter-spacing: -.04em; line-height: 1; }
+  .v-b .dial .unit { font-size: 14px; color: #6f6f72; font-weight: 300; margin-top: 8px; letter-spacing: .18em; text-transform: uppercase; }
+  .v-b input[type=range] { width: 100%; margin: 26px 0 6px; accent-color: #ededed; }
+  .v-b .hold { position: relative; border: 1px solid #313134; overflow: hidden; user-select: none; cursor: pointer; }
+  .v-b .hold .fill { position: absolute; inset: 0; background: #ededed; width: 0%; transition: width .05s linear; }
+  .v-b .hold .lbl { position: relative; text-align: center; padding: 19px 0; font-size: 14px; letter-spacing: .18em; text-transform: uppercase; font-weight: 300; mix-blend-mode: difference; color: #ededed; }
+  .v-b .exitline { text-align: center; font-size: 12px; color: #4d4d51; font-weight: 300; padding: 14px 0 0; cursor: pointer; }
+  .v-b .light { background: #f3f1ee; color: #1a1a1c; }
+  .v-b .light .whisper { color: #83817c; }
+  .v-b .light .btn { border-color: #d6d3cd; color: #1a1a1c; }
+  .v-b .shieldq { position: absolute; inset: 0; background: #0a0a0b; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+
+  /* ---------- variant C · The Instrument ---------- */
+  .v-c { background: #0d1117; color: #c9d4e0; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  .v-c .statusbar { color: #6b7a8d; }
+  .v-c .content { padding: 6px 16px 18px; font-size: 12.5px; }
+  .v-c h1 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: #6b7a8d; margin: 10px 0 12px; font-weight: 600; }
+  .v-c .kv { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #1b2230; }
+  .v-c .kv .k { color: #6b7a8d; }
+  .v-c .kv .v { text-align: right; word-break: break-all; }
+  .v-c .led { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+  .v-c .ok { background: #4ade80; box-shadow: 0 0 7px #4ade80; }
+  .v-c .warn { background: #fbbf24; box-shadow: 0 0 7px #fbbf24; }
+  .v-c .off { background: #45505f; }
+  .v-c .bad { background: #f87171; box-shadow: 0 0 7px #f87171; }
+  .v-c .g { color: #4ade80; } .v-c .a { color: #fbbf24; } .v-c .r { color: #f87171; } .v-c .d { color: #6b7a8d; }
+  .v-c .btn { display: block; width: 100%; padding: 13px; background: #16202c; border: 1px solid #2b3a4d; color: #9fe8ff; font-family: inherit; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; }
+  .v-c .btn.primary { background: #16321f; border-color: #2f6b41; color: #6ee7a0; }
+  .v-c .btn[disabled] { opacity: .32; cursor: not-allowed; }
+  .v-c table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .v-c th { text-align: left; color: #6b7a8d; font-weight: 600; padding: 6px 6px 6px 0; border-bottom: 1px solid #2b3a4d; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; }
+  .v-c td { padding: 7px 6px 7px 0; border-bottom: 1px solid #1b2230; vertical-align: top; }
+  .v-c input[type=text], .v-c input[type=number] { width: 100%; background: #0a0f16; border: 1px solid #2b3a4d; color: #c9d4e0; padding: 9px 10px; font-family: inherit; font-size: 12.5px; }
+  .v-c .check { display: flex; gap: 9px; align-items: flex-start; padding: 9px 0; cursor: pointer; font-size: 12px; line-height: 1.45; }
+  .v-c .check .bx { width: 15px; height: 15px; border: 1px solid #45505f; flex: none; margin-top: 1px; text-align: center; line-height: 13px; font-size: 11px; }
+  .v-c .check.on .bx { background: #2f6b41; border-color: #4ade80; color: #d9ffe8; }
+  .v-c .note { color: #6b7a8d; font-size: 11.5px; line-height: 1.5; }
+  .v-c .readout { position: absolute; inset: 0; background: #0d1117; padding: 26px 20px; display: flex; flex-direction: column; }
+  .v-c .big { font-size: 33px; letter-spacing: -.02em; color: #e8f0f8; }
+
+  /* ---------- right rail ---------- */
+  .rail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .card h3 { margin: 0; padding: 11px 14px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); }
+  .card .in { padding: 12px 14px; }
+
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .steps button {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--dim); padding: 7px 11px; border-radius: 6px;
+    font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .steps button.on { background: var(--accent); border-color: var(--accent); color: #06202b; font-weight: 600; }
+  .steps button b { font-weight: 600; opacity: .6; margin-right: 5px; }
+  .steps button.on b { opacity: .8; }
+
+  .notebox { font-size: 13px; line-height: 1.55; color: #c3ccd9; }
+  .notebox b { color: #fff; }
+
+  .state { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .state .r { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #232833; }
+  .state .r:last-child { border-bottom: 0; }
+  .state .r span:first-child { color: var(--dim); }
+  .state .r span:last-child { text-align: right; word-break: break-all; }
+  .state .t { color: #4ade80; } .state .f { color: #6b7280; } .state .w { color: #fbbf24; }
+
+  .sim { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sim button { background: var(--panel-2); border: 1px solid var(--line); color: #cbd5e1; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; }
+  .sim button:hover { border-color: #48566b; }
+  .sim button.danger { color: #fca5a5; }
+
+  .legend { font-size: 12.5px; line-height: 1.6; color: #aab4c2; }
+  .legend b { color: #fff; }
+  .legend code { background: #0f1319; padding: 1px 5px; border-radius: 4px; color: var(--accent); }
+
+  /* ---------- floating variant switcher ---------- */
+  .switcher {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 100;
+    display: flex; align-items: stretch; background: #f8fafc; color: #0b1220; border-radius: 999px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.55); overflow: hidden; font-size: 14px;
+  }
+  .switcher button { background: none; border: 0; padding: 0 18px; font-size: 17px; cursor: pointer; color: #0b1220; }
+  .switcher button:hover { background: #e2e8f0; }
+  .switcher .lbl { padding: 11px 18px; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; white-space: nowrap; font-weight: 600; }
+  .switcher .lbl small { display: block; font-weight: 400; font-size: 11px; color: #64748b; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+
+<div class="banner"><b>Prototype</b> — throwaway. Ticket #11, freedomfrom v1 commit flow. Nothing persists; reload resets. <b>← →</b> switch personality, <b>↑ ↓</b> step.</div>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="rendered-by" id="renderedBy"></div>
+    <div class="phone"><div class="screen" id="screen"></div></div>
+  </div>
+
+  <div class="rail">
+    <div class="card">
+      <h3>Flow</h3>
+      <div class="in"><div class="steps" id="steps"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>What this screen decides</h3>
+      <div class="in"><div class="notebox" id="note"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>State</h3>
+      <div class="in state" id="stateBox"></div>
+    </div>
+
+    <div class="card">
+      <h3>Simulate</h3>
+      <div class="in">
+        <div class="sim">
+          <button data-sim="hour">clock +1h</button>
+          <button data-sim="day">clock +1d</button>
+          <button data-sim="expire">jump to deadline</button>
+          <button data-sim="degrade">token stops resolving</button>
+          <button data-sim="reinstall" class="danger">delete &amp; reinstall</button>
+          <button data-sim="revoke" class="danger">revoke in Settings</button>
+          <button data-sim="reset">reset all</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Fixed by ADR — no variant may contradict</h3>
+      <div class="in legend">
+        <b>No in-app escape hatch.</b> Settings → Screen Time → revoke is the exit, named plainly.<br>
+        <b>Restrictions are not optional.</b> <code>denyAppRemoval</code> blocks deleting <i>any</i> app, device-wide, for the whole duration. <code>requireAutomaticDateAndTime</code> is on too.<br>
+        <b>Deadline is absolute.</b> Deleting the app does not end it; the record survives in the Keychain and re-arms silently.<br>
+        <b>15 minutes → 7 days.</b> Hard API limits.<br>
+        <b>The app cannot name your apps.</b> It holds opaque tokens; only the shield extension sees the target.<br>
+        <b>Ceiling on any copy:</b> resists casual bypass while authorized; cannot prevent a determined bypass.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="switcher">
+  <button id="prevV" title="Previous personality (←)">‹</button>
+  <div class="lbl" id="vLabel"></div>
+  <button id="nextV" title="Next personality (→)">›</button>
+</div>
+
+<script>
+/* ============================================================ state ============================================================ */
+
+const STEPS = [
+  { key: "firstrun", name: "First run",  by: "App" },
+  { key: "targets",  name: "Targets",    by: "App + system picker" },
+  { key: "commit",   name: "Commit",     by: "App" },
+  { key: "shielded", name: "Shielded",   by: "ShieldConfig extension" },
+  { key: "escape",   name: "Escape",     by: "App" },
+  { key: "expiry",   name: "Expiry",     by: "App + Monitor extension" },
+  { key: "rearm",    name: "Re-arm",     by: "App (after reinstall)" },
+];
+
+const DEFAULT_STATE = {
+  authorized: false,
+  apps: 0,
+  sites: [],
+  durationMin: 180,
+  startedAt: null,
+  deadline: null,
+  degraded: false,
+  restrictions: false,
+  history: [],
+  clockOffset: 0,
+  wasDeleted: false,
+  sheet: null,      // 'auth' | 'picker' | null
+  ack: {},          // variant C consequence checkboxes
+  pickerSel: [true,true,true,false,false,false,false,false,false],
+};
+
+let state = structuredClone(DEFAULT_STATE);
+let variant = "A";
+let step = 0;
+
+const VARIANT_NAMES = { A: "The Contract", B: "The Quiet Room", C: "The Instrument" };
+const ORDER = ["A", "B", "C"];
+
+/* ============================================================ helpers ============================================================ */
+
+const now = () => Date.now() + state.clockOffset;
+const running = () => state.deadline !== null && now() < state.deadline;
+const targetCount = () => state.apps + state.sites.length;
+
+function fmtClock(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+function fmtDeadline(ts) {
+  if (ts === null) return "—";
+  const d = new Date(ts);
+  return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }) + ", " + fmtClock(ts);
+}
+function fmtISO(ts) {
+  if (ts === null) return "—";
+  const d = new Date(ts), p = n => String(n).padStart(2, "0");
+  const off = -d.getTimezoneOffset(), s = off >= 0 ? "+" : "-", a = Math.abs(off);
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${s}${p(Math.floor(a/60))}:${p(a%60)}`;
+}
+function fmtRemaining(ms) {
+  if (ms <= 0) return "00:00:00";
+  const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+        m = Math.floor((s % 3600) / 60), ss = s % 60, p = n => String(n).padStart(2, "0");
+  return d > 0 ? `${d}d ${p(h)}:${p(m)}:${p(ss)}` : `${p(h)}:${p(m)}:${p(ss)}`;
+}
+function durWords(min) {
+  if (min < 60) return `${min} minutes`;
+  if (min < 1440) { const h = min / 60; return `${h % 1 === 0 ? h : h.toFixed(1)} hour${h === 1 ? "" : "s"}`; }
+  const d = min / 1440;
+  return `${d % 1 === 0 ? d : d.toFixed(1)} day${d === 1 ? "" : "s"}`;
+}
+const DUR_PRESETS = [15, 60, 180, 480, 1440, 4320, 10080];
+
+function statusbar(cls) {
+  return `<div class="statusbar ${cls || ""}"><span>${fmtClock(now())}</span><span>▮▮▮ ▮</span></div>`;
+}
+function homebar() { return `<div class="homebar"><i></i></div>`; }
+
+function fakeAppBehind(blur) {
+  return `<div class="fakeapp ${blur ? "blur" : ""}"><div class="hdr"></div><div class="rows"><div></div><div></div><div></div><div></div><div></div><div></div></div></div>`;
+}
+
+/* ============================================================ system sheets (shared across variants) ============================================================ */
+
+function authAlert() {
+  return `<div class="sysoverlay"><div class="sysalert">
+    <div class="t">“freedomfrom” Would Like to<br>Access Screen Time</div>
+    <div class="m">Providing access to Screen Time will allow “freedomfrom” to restrict content and apps on this device.</div>
+    <div class="row"><button data-act="auth-no">Don't Allow</button><button data-act="auth-yes">Continue</button></div>
+  </div></div>`;
+}
+
+const PICKER_ROWS = ["Instagram", "X", "TikTok", "Reddit", "YouTube", "Safari", "Mail", "News", "Games"];
+function pickerSheet() {
+  const rows = PICKER_ROWS.map((n, i) =>
+    `<div class="it ${state.pickerSel[i] ? "on" : ""}" data-act="pick-toggle" data-i="${i}"><div class="ic"></div>${n}<div class="ck"></div></div>`
+  ).join("");
+  return `<div class="syssheet">
+    <header><button data-act="pick-cancel">Cancel</button><b>Apps &amp; Categories</b><button data-act="pick-done"><b>Done</b></button></header>
+    <div class="body"><div class="grp">${rows}</div>
+      <div class="note">System sheet, drawn by iOS. freedomfrom never learns which rows you touched — it receives opaque tokens.</div>
+    </div></div>`;
+}
+
+/* ============================================================ VARIANT A — The Contract ============================================================ */
+
+const A = {
+  firstrun: () => `${statusbar()}<div class="content">
+    <div class="eyebrow">freedomfrom</div>
+    <h1>Terms of the commitment</h1>
+    <p>You choose what to block and for how long. After that, this app will not let you undo it — and neither will we.</p>
+    <div class="rule"></div>
+    <ol class="clauses">
+      <li><span class="clause-strong">It cannot be lifted early.</span> Not by you, not by us, not by deleting this app. The end time is fixed at the moment you sign.</li>
+      <li><span class="clause-strong">While a commitment runs, no app on this iPhone can be deleted.</span> Not just this one — any of them. This is how the commitment survives you.</li>
+      <li><span class="clause-strong">Date &amp; Time will be held on automatic.</span> Winding the clock forward is otherwise the easy way out.</li>
+      <li><span class="clause-strong">There is a way out, and it is not hidden.</span> Settings → Screen Time → freedomfrom → revoke. It takes about fifteen seconds and it will be recorded as broken.</li>
+    </ol>
+    <div class="rule"></div>
+    <p class="fine">freedomfrom resists casual bypass while it is authorized. It cannot prevent a determined bypass, and it will not pretend otherwise.</p>
+    <button class="btn" data-act="ask-auth">Agree &amp; grant access</button>
+  </div>${homebar()}${state.sheet === "auth" ? authAlert() : ""}`,
+
+  targets: () => {
+    const items = [];
+    if (state.apps > 0) items.push(`<div class="li"><span class="n">1.</span><span>${state.apps} application${state.apps === 1 ? "" : "s"} <i>(names withheld by iOS)</i></span><span class="w">Schedule A</span></div>`);
+    state.sites.forEach((s, i) => items.push(`<div class="li"><span class="n">${i + 2}.</span><span>${s}</span><span class="w">Schedule B</span></div>`));
+    return `${statusbar()}<div class="content">
+      <div class="eyebrow">Step one of two</div>
+      <h1>What is covered</h1>
+      <div class="schedule">${items.length ? items.join("") : `<div class="empty">Nothing is covered yet.</div>`}</div>
+      <p class="fine" style="margin-top:12px">iOS hands this app sealed references, never names. The list above is what it is permitted to know about your own choice.</p>
+      <button class="btn ghost" data-act="open-picker" style="margin-bottom:14px">Choose applications…</button>
+      <div class="eyebrow" style="margin-bottom:7px">Add a website</div>
+      <form data-act="add-site-form"><input type="text" name="site" placeholder="reddit.com" autocomplete="off" /></form>
+      <p class="fine" style="margin-top:8px">Typed by hand, and readable back — the one part of your choice this app can actually show you.</p>
+      <button class="btn" data-act="go-commit" ${targetCount() ? "" : "disabled"} style="margin-top:8px">Continue to term</button>
+    </div>${homebar()}${state.sheet === "picker" ? pickerSheet() : ""}`;
+  },
+
+  commit: () => {
+    if (running()) return A.shieldedApp();
+    const end = now() + state.durationMin * 60000;
+    return `${statusbar()}<div class="content">
+      <div class="eyebrow">Step two of two</div>
+      <h1>Term</h1>
+      <div class="chips">${DUR_PRESETS.map(m => `<button class="chip ${state.durationMin === m ? "on" : ""}" data-act="dur" data-m="${m}">${durWords(m)}</button>`).join("")}</div>
+      <div class="term"><div class="big">${durWords(state.durationMin)}</div><div class="until">from now until <b>${fmtDeadline(end)}</b></div></div>
+      <div class="rule"></div>
+      <p style="font-size:14px"><b>Once signed, this cannot be revoked before ${fmtDeadline(end)}</b> — not by you, not by deleting the app, not by changing the date on this phone.</p>
+      <div class="sigline"><span id="sigInk"></span></div>
+      <p class="fine" style="text-align:center;margin-bottom:14px">${targetCount()} target${targetCount() === 1 ? "" : "s"} · signed on this iPhone only</p>
+      <div class="sign" data-act="hold" data-ms="1400"><div class="fill"></div><div class="lbl">Press and hold to sign</div></div>
+    </div>${homebar()}`;
+  },
+
+  shieldedApp: () => `${statusbar()}<div class="content">
+    <div class="eyebrow">In force</div>
+    <h1>${fmtRemaining(state.deadline - now())}</h1>
+    <p>remaining, until <b>${fmtDeadline(state.deadline)}</b>.</p>
+    <div class="rule"></div>
+    <div class="schedule">
+      <div class="li"><span class="n">1.</span><span>${state.apps} application${state.apps === 1 ? "" : "s"}${state.degraded ? " <i>— one no longer identifiable</i>" : ""}</span></div>
+      ${state.sites.map((s, i) => `<div class="li"><span class="n">${i + 2}.</span><span>${s}</span></div>`).join("")}
+    </div>
+    ${state.degraded ? `<p class="fine" style="margin-top:12px">One target can no longer be identified by iOS, so it is no longer covered. <b>The term is unchanged.</b></p>` : ""}
+    <div class="rule"></div>
+    <button class="btn ghost" data-act="step:4">Ending it early</button>
+  </div>${homebar()}`,
+
+  shielded: () => `${fakeAppBehind(true)}<div class="shieldcard"><div class="card">
+      <div class="eyebrow">freedomfrom</div>
+      <h1 style="font-size:22px;margin:8px 0 12px">Covered by a commitment you signed</h1>
+      <p style="font-size:14px">Signed ${state.startedAt ? fmtDeadline(state.startedAt) : "—"}.<br>Available again <b>${fmtDeadline(state.deadline)}</b>.</p>
+      <p class="fine" style="margin:0">${fmtRemaining((state.deadline || now()) - now())} remaining. freedomfrom cannot lift this early.</p>
+  </div></div>`,
+
+  escape: () => `${statusbar()}<div class="content">
+    <div class="eyebrow">Ending it early</div>
+    <h1>There is no button here</h1>
+    <p>If there were one, it would be the first thing your worst hour reached for. So the exit lives where it always did — in Settings, where iOS keeps it, and where it costs you a deliberate walk.</p>
+    <div class="rule"></div>
+    <table class="routes">
+      <tr><td>1.</td><td><b>Settings → Screen Time → freedomfrom → revoke access.</b> This works. Everything lifts at once. It is recorded as a broken commitment, and nothing else happens.</td></tr>
+      <tr><td>2.</td><td><b>Deleting freedomfrom does not end the term.</b> While a commitment runs, no app on this phone can be deleted at all — and if you get past that, the signed term outlives the app and resumes when it returns.</td></tr>
+      <tr><td>3.</td><td><b>Winding the clock forward does not work</b> while Date &amp; Time is held on automatic.</td></tr>
+    </table>
+    <div class="rule"></div>
+    <p class="fine">This is the whole truth about how strong this is. It resists a casual bypass while it is authorized. It cannot prevent a determined one.</p>
+    <button class="btn ghost" data-act="step:3">Back</button>
+  </div>${homebar()}`,
+
+  expiry: () => `${statusbar()}<div class="content" style="text-align:center">
+    <div style="padding:52px 0 22px"><span class="stamp">Discharged</span></div>
+    <h1 style="font-size:24px">${durWords(state.durationMin)} kept.</h1>
+    <p>The commitment ended at ${state.deadline ? fmtDeadline(state.deadline) : "—"} and everything it covered is open again.</p>
+    <div class="rule"></div>
+    <p class="fine">Filed with ${state.history.length} earlier commitment${state.history.length === 1 ? "" : "s"}.</p>
+    <button class="btn" data-act="new" style="margin-top:14px">Sign another</button>
+    <button class="btn ghost" data-act="noop" style="margin-top:9px">Not now</button>
+  </div>${homebar()}`,
+
+  rearm: () => `${statusbar()}<div class="content">
+    <div class="eyebrow">freedomfrom</div>
+    <h1>Still in force</h1>
+    <p>A commitment signed on this iPhone runs until <b>${fmtDeadline(state.deadline)}</b>. It has been put back in place.</p>
+    <div class="term"><div class="big">${fmtRemaining((state.deadline || now()) - now())}</div><div class="until">remaining</div></div>
+    <div class="rule"></div>
+    <p class="fine">Nothing about how it got here is discussed. The term was fixed when it was signed; the app arriving late does not change it.</p>
+    <button class="btn ghost" data-act="step:3">See what is covered</button>
+  </div>${homebar()}`,
+};
+
+/* ============================================================ VARIANT B — The Quiet Room ============================================================ */
+
+const B = {
+  firstrun: () => `${statusbar()}<div class="content">
+    <div class="spacer"></div>
+    <div class="say">This blocks what you choose,<br>until a time you choose.</div>
+    <div class="say" style="margin-top:18px;color:#8d8d90">You will not be able to undo it.</div>
+    <div class="spacer"></div>
+    <div class="whisper" style="margin-bottom:22px">While it runs: no app on this phone can be deleted, and the clock stays automatic. The way out is in Settings, and it is recorded.</div>
+    <button class="btn" data-act="ask-auth">Begin</button>
+  </div>${homebar()}${state.sheet === "auth" ? authAlert() : ""}`,
+
+  targets: () => {
+    const n = targetCount();
+    const dots = Array.from({ length: 12 }, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("");
+    return `${statusbar()}<div class="content">
+      <div class="spacer"></div>
+      <div style="text-align:center"><div class="count">${n}</div><div class="countlbl">chosen</div></div>
+      <div class="dots" style="justify-content:center">${dots}</div>
+      <div class="spacer"></div>
+      <form data-act="add-site-form"><input type="text" name="site" placeholder="or type a website" autocomplete="off" /></form>
+      <div class="whisper" style="margin:16px 0 22px">${state.sites.length ? state.sites.join(" · ") : "&nbsp;"}</div>
+      <button class="btn" data-act="open-picker" style="margin-bottom:10px">Choose apps</button>
+      <button class="btn" data-act="go-commit" ${n ? "" : "disabled"}>Next</button>
+    </div>${homebar()}${state.sheet === "picker" ? pickerSheet() : ""}`;
+  },
+
+  commit: () => {
+    if (running()) return B.shieldedApp();
+    const idx = DUR_PRESETS.indexOf(state.durationMin);
+    const end = now() + state.durationMin * 60000;
+    return `${statusbar()}<div class="content">
+      <div class="spacer"></div>
+      <div class="dial">
+        <div class="num">${state.durationMin < 60 ? state.durationMin : state.durationMin < 1440 ? state.durationMin / 60 : state.durationMin / 1440}</div>
+        <div class="unit">${state.durationMin < 60 ? "minutes" : state.durationMin < 1440 ? "hours" : "days"}</div>
+      </div>
+      <input type="range" min="0" max="${DUR_PRESETS.length - 1}" step="1" value="${idx < 0 ? 2 : idx}" data-act="dur-range" />
+      <div class="whisper" style="text-align:center">until ${fmtDeadline(end)}</div>
+      <div class="spacer"></div>
+      <div class="hold" data-act="hold" data-ms="1800"><div class="fill"></div><div class="lbl">hold to commit</div></div>
+      <div class="whisper" style="text-align:center;margin-top:14px">${targetCount()} things · this device only</div>
+    </div>${homebar()}`;
+  },
+
+  shieldedApp: () => `${statusbar()}<div class="content">
+    <div class="spacer"></div>
+    <div style="text-align:center">
+      <div class="count" style="font-size:52px">${fmtRemaining(state.deadline - now())}</div>
+      <div class="countlbl">until ${fmtDeadline(state.deadline)}</div>
+    </div>
+    ${state.degraded ? `<div class="whisper" style="text-align:center;margin-top:26px">One thing is no longer covered.<br>The time is unchanged.</div>` : ""}
+    <div class="spacer"></div>
+    <div class="exitline" data-act="step:4">there is a way out. it is in Settings.</div>
+  </div>${homebar()}`,
+
+  shielded: () => `<div class="shieldq">
+      <div style="font-size:46px;font-weight:200;letter-spacing:-.03em">${fmtRemaining((state.deadline || now()) - now())}</div>
+      <div style="font-size:13px;color:#5b5b5f;font-weight:300;letter-spacing:.2em;text-transform:uppercase">freedomfrom</div>
+    </div>`,
+
+  escape: () => `${statusbar()}<div class="content">
+    <div class="spacer"></div>
+    <div class="say">Settings → Screen Time →<br>freedomfrom → revoke.</div>
+    <div class="whisper" style="margin-top:24px">That ends it. It takes about fifteen seconds and it will be written down.</div>
+    <div class="whisper" style="margin-top:16px">Deleting the app does not end it, and while this runs you cannot delete any app anyway. The clock is held automatic.</div>
+    <div class="whisper" style="margin-top:16px">This resists a casual bypass while it is authorized. It cannot prevent a determined one.</div>
+    <div class="spacer"></div>
+    <button class="btn" data-act="step:3">Back</button>
+  </div>${homebar()}`,
+
+  expiry: () => `${statusbar()}<div class="content light" style="background:#f3f1ee;color:#1a1a1c">
+    <div class="spacer"></div>
+    <div class="say" style="text-align:center;color:#1a1a1c">Ended.</div>
+    <div class="spacer"></div>
+    <button class="btn" data-act="new" style="border-color:#d6d3cd;color:#1a1a1c">Again</button>
+  </div>${homebar()}`,
+
+  rearm: () => `${statusbar()}<div class="content">
+    <div class="spacer"></div>
+    <div style="text-align:center">
+      <div class="count" style="font-size:52px">${fmtRemaining((state.deadline || now()) - now())}</div>
+      <div class="countlbl">still running</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="exitline" data-act="step:4">there is a way out. it is in Settings.</div>
+  </div>${homebar()}`,
+};
+
+/* ============================================================ VARIANT C — The Instrument ============================================================ */
+
+const ACKS = [
+  ["irrev", "This cannot be cancelled, paused, or shortened. The deadline is absolute wall-clock time."],
+  ["remove", "denyAppRemoval will be applied device-wide: NO app on this iPhone can be deleted until the deadline."],
+  ["clock", "requireAutomaticDateAndTime will be applied: the system clock cannot be set manually."],
+  ["exit", "The exit is Settings → Screen Time → revoke. Taking it is logged as outcome=BROKEN."],
+];
+const allAcked = () => ACKS.every(([k]) => state.ack[k]);
+
+const C = {
+  firstrun: () => `${statusbar()}<div class="content">
+    <h1>Preflight</h1>
+    <div class="kv"><span class="k">authorization</span><span class="v"><span class="led ${state.authorized ? "ok" : "off"}"></span>${state.authorized ? '<span class="g">GRANTED</span>' : '<span class="d">NOT GRANTED</span>'}</span></div>
+    <div class="kv"><span class="k">mode</span><span class="v">.individual <span class="d">(user-revocable)</span></span></div>
+    <div class="kv"><span class="k">scope</span><span class="v">this device only</span></div>
+    <div class="kv"><span class="k">interval limits</span><span class="v">15m … 7d</span></div>
+    <h1 style="margin-top:18px">Restrictions applied while running</h1>
+    <div class="kv"><span class="k">denyAppRemoval</span><span class="v"><span class="led ${state.restrictions ? "ok" : "off"}"></span>device-wide</span></div>
+    <div class="kv"><span class="k">requireAutomaticDateAndTime</span><span class="v"><span class="led ${state.restrictions ? "ok" : "off"}"></span>forced</span></div>
+    <p class="note" style="margin:14px 0"><span class="a">In plain terms:</span> while a commitment runs you cannot delete <i>any</i> app on this iPhone — not just this one — and you cannot set the clock by hand.</p>
+    <p class="note" style="margin:14px 0">Both take effect only while authorization holds. Revoking in Settings clears everything this app applied, in one gesture. There is no API to read back whether a restriction actually took hold — the LEDs above report what was <i>requested</i>.</p>
+    <p class="note" style="margin:0 0 16px"><span class="a">Honest ceiling:</span> resists casual bypass while authorized; cannot prevent a determined bypass.</p>
+    <button class="btn primary" data-act="ask-auth">Request authorization</button>
+  </div>${homebar()}${state.sheet === "auth" ? authAlert() : ""}`,
+
+  targets: () => {
+    const rows = [];
+    for (let i = 0; i < state.apps; i++) rows.push(`<tr><td>app</td><td class="d">0x${(0x8a13f2 + i * 977).toString(16)}</td><td class="d">unavailable</td><td class="${state.degraded && i === 0 ? "r" : "g"}">${state.degraded && i === 0 ? "UNRESOLVED" : "ok"}</td></tr>`);
+    state.sites.forEach(s => rows.push(`<tr><td>web</td><td>${s}</td><td>${s}</td><td class="g">ok</td></tr>`));
+    return `${statusbar()}<div class="content">
+      <h1>Targets · ${targetCount()}</h1>
+      <table><thead><tr><th>type</th><th>token</th><th>label</th><th>status</th></tr></thead>
+      <tbody>${rows.length ? rows.join("") : `<tr><td colspan="4" class="d">no targets selected</td></tr>`}</tbody></table>
+      <p class="note" style="margin:12px 0 16px">Application tokens are opaque: the app holds a reference it cannot resolve to a name. Web domains are typed, so they are the only targets it can echo back.</p>
+      <button class="btn" data-act="open-picker" style="margin-bottom:12px">+ apps via system picker</button>
+      <form data-act="add-site-form" style="margin-bottom:12px"><input type="text" name="site" placeholder="+ domain e.g. reddit.com" autocomplete="off" /></form>
+      <button class="btn primary" data-act="go-commit" ${targetCount() ? "" : "disabled"}>Continue</button>
+    </div>${homebar()}${state.sheet === "picker" ? pickerSheet() : ""}`;
+  },
+
+  commit: () => {
+    if (running()) return C.shieldedApp();
+    const end = now() + state.durationMin * 60000;
+    return `${statusbar()}<div class="content">
+      <h1>Arm commitment</h1>
+      <div class="kv"><span class="k">start</span><span class="v">${fmtISO(now())}</span></div>
+      <div class="kv"><span class="k">duration</span><span class="v">${durWords(state.durationMin)}</span></div>
+      <div class="kv"><span class="k">deadline</span><span class="v">${fmtISO(end)}</span></div>
+      <div class="kv"><span class="k">targets</span><span class="v">${state.apps} app / ${state.sites.length} web</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0">
+        ${DUR_PRESETS.map(m => `<button class="btn" style="width:auto;padding:8px 11px;${state.durationMin === m ? "border-color:#4ade80;color:#6ee7a0" : ""}" data-act="dur" data-m="${m}">${m < 60 ? m + "m" : m < 1440 ? m / 60 + "h" : m / 1440 + "d"}</button>`).join("")}
+      </div>
+      <p class="note" style="margin:0 0 6px">Acknowledge each consequence to enable ARM:</p>
+      ${ACKS.map(([k, t]) => `<div class="check ${state.ack[k] ? "on" : ""}" data-act="ack" data-k="${k}"><span class="bx">${state.ack[k] ? "✓" : ""}</span><span>${t}</span></div>`).join("")}
+      <button class="btn primary" data-act="commit" ${allAcked() ? "" : "disabled"} style="margin-top:14px">▶ ARM</button>
+    </div>${homebar()}`;
+  },
+
+  shieldedApp: () => `${statusbar()}<div class="content">
+    <h1>Commitment · active</h1>
+    <div class="big" style="margin:4px 0 14px">${fmtRemaining(state.deadline - now())}</div>
+    <div class="kv"><span class="k">deadline</span><span class="v">${fmtISO(state.deadline)}</span></div>
+    <div class="kv"><span class="k">started</span><span class="v">${fmtISO(state.startedAt)}</span></div>
+    <div class="kv"><span class="k">shield</span><span class="v"><span class="led ok"></span>applied · ${targetCount() - (state.degraded ? 1 : 0)} of ${targetCount()}</span></div>
+    <div class="kv"><span class="k">coverage</span><span class="v">${state.degraded ? '<span class="a">DEGRADED</span>' : '<span class="g">full</span>'}</span></div>
+    <div class="kv"><span class="k">denyAppRemoval</span><span class="v"><span class="led ok"></span>on</span></div>
+    <div class="kv"><span class="k">automatic date &amp; time</span><span class="v"><span class="led ok"></span>forced</span></div>
+    <div class="kv"><span class="k">authorization</span><span class="v"><span class="led ${state.authorized ? "ok" : "bad"}"></span>${state.authorized ? "held" : "REVOKED"}</span></div>
+    ${state.degraded ? `<p class="note" style="margin:12px 0 0"><span class="a">1 token no longer resolves.</span> That target is dropped from the shield. Duration is unaffected — the deadline does not move.</p>` : ""}
+    <button class="btn" data-act="step:4" style="margin-top:16px">Escape routes</button>
+  </div>${homebar()}`,
+
+  shielded: () => `<div class="readout">
+      <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#6b7a8d">shielded by freedomfrom</div>
+      <div class="big" style="margin:16px 0 20px;font-size:38px">${fmtRemaining((state.deadline || now()) - now())}</div>
+      <div class="kv"><span class="k">deadline</span><span class="v">${fmtISO(state.deadline)}</span></div>
+      <div class="kv"><span class="k">early exit</span><span class="v"><span class="r">not available</span></span></div>
+      <div class="kv"><span class="k">override</span><span class="v">Settings → Screen Time</span></div>
+      <div style="flex:1"></div>
+      <p class="note">This screen is drawn by the ShieldConfiguration extension. It is the only part of freedomfrom that knows which target you tapped.</p>
+    </div>`,
+
+  escape: () => `${statusbar()}<div class="content">
+    <h1>Escape routes · 3</h1>
+    <table><thead><tr><th>route</th><th>works?</th><th>cost</th></tr></thead><tbody>
+      <tr><td>Settings → Screen Time → revoke</td><td class="r">YES</td><td>everything lifts at once · logged <span class="r">BROKEN</span></td></tr>
+      <tr><td>delete freedomfrom</td><td class="g">NO</td><td>blocked by denyAppRemoval · and the record outlives the app, so it re-arms</td></tr>
+      <tr><td>move the system clock</td><td class="g">NO</td><td>blocked by requireAutomaticDateAndTime</td></tr>
+    </tbody></table>
+    <p class="note" style="margin:14px 0 0">Route 1 dominates: revoking clears every setting this app applied, which defeats routes 2 and 3 in the same gesture. Nothing short of a supervised device closes it, and supervision requires erasing the phone.</p>
+    <p class="note" style="margin:12px 0 0"><span class="a">There is deliberately no button on this screen.</span> An in-app exit would be a faster version of the one above, and it is the lever a bad hour reaches for.</p>
+    <p class="note" style="margin:12px 0 0"><span class="a">Ceiling:</span> this resists a casual bypass while authorized. It cannot prevent a determined bypass.</p>
+    <button class="btn" data-act="step:3" style="margin-top:16px">Back</button>
+  </div>${homebar()}`,
+
+  expiry: () => `${statusbar()}<div class="content">
+    <h1>Commitment closed</h1>
+    <div class="kv"><span class="k">outcome</span><span class="v"><span class="led ok"></span><span class="g">COMPLETED</span></span></div>
+    <div class="kv"><span class="k">ran</span><span class="v">${durWords(state.durationMin)}</span></div>
+    <div class="kv"><span class="k">closed at</span><span class="v">${fmtISO(state.deadline)}</span></div>
+    <div class="kv"><span class="k">shield</span><span class="v"><span class="led off"></span>cleared</span></div>
+    <div class="kv"><span class="k">restrictions</span><span class="v"><span class="led off"></span>cleared</span></div>
+    <h1 style="margin-top:18px">History · ${state.history.length}</h1>
+    <table><thead><tr><th>#</th><th>duration</th><th>outcome</th></tr></thead><tbody>
+      ${state.history.length ? state.history.map((h, i) => `<tr><td>${i + 1}</td><td>${durWords(h.min)}</td><td class="${h.outcome === "COMPLETED" ? "g" : "r"}">${h.outcome}</td></tr>`).join("") : `<tr><td colspan="3" class="d">empty</td></tr>`}
+    </tbody></table>
+    <button class="btn primary" data-act="new" style="margin-top:16px">New commitment</button>
+  </div>${homebar()}`,
+
+  rearm: () => `${statusbar()}<div class="content">
+    <h1>Re-armed</h1>
+    <div class="kv"><span class="k">record</span><span class="v">recovered from Keychain</span></div>
+    <div class="kv"><span class="k">deadline</span><span class="v">${fmtISO(state.deadline)}</span></div>
+    <div class="kv"><span class="k">remaining</span><span class="v">${fmtRemaining((state.deadline || now()) - now())}</span></div>
+    <div class="kv"><span class="k">shield</span><span class="v"><span class="led ok"></span>re-applied</span></div>
+    <div class="kv"><span class="k">coverage</span><span class="v">${state.degraded ? '<span class="a">DEGRADED — 1 token lost on reinstall</span>' : '<span class="g">full</span>'}</span></div>
+    <p class="note" style="margin:14px 0 0">The record survived deletion, so the deadline did too. No comment is made about the gap.</p>
+    <button class="btn" data-act="step:3" style="margin-top:16px">Status</button>
+  </div>${homebar()}`,
+};
+
+const VARIANTS = { A, B, C };
+
+/* ============================================================ per-step designer notes ============================================================ */
+
+const NOTES = {
+  firstrun: {
+    A: "<b>Consent as a contract.</b> The collateral damage is stated as numbered clauses <i>before</i> the iOS prompt, so the device-wide 'no app can be deleted' fact is impossible to miss. Long — highest-abandonment screen carries the most words. Does the ceremony read as serious, or as a EULA nobody scrolls?",
+    B: "<b>Two sentences and a button.</b> The collateral sits in grey type most people won't read. Fastest to authorization, weakest informed consent. Is that trade acceptable given no setup ritual exists to fall back on?",
+    C: "<b>A preflight panel.</b> Authorization is a status LED, restrictions are named by their API names, and the ceiling is printed in amber. Reads as trustworthy to a developer — does it read as intimidating to a TestFlight tester?",
+  },
+  targets: {
+    A: "<b>A schedule of covered items.</b> Apps collapse to a count with 'names withheld by iOS' stated as a fact of the medium. Websites are typed by hand and readable back — the asymmetry is made explicit rather than hidden.",
+    B: "<b>A count and some dots.</b> No list at all, which sidesteps the opaque-token problem by never promising a list. Cheapest to build and honest by omission — but can you tell tomorrow what you actually blocked?",
+    C: "<b>A token table.</b> type / token / label / status, with 'label: unavailable' spelled out per row. This is the only variant where a degraded target is visible <i>here</i> rather than only on the status screen.",
+  },
+  commit: {
+    A: "<b>Press and hold to sign.</b> A signature line with ink. The irreversibility clause names the exact date in bold directly above the hold. Ceremony as the anti-impulse mechanism.",
+    B: "<b>Hold anywhere.</b> The hold <i>is</i> the confirmation — no dialog, no checkbox. Whole screen is a dial and a deadline in words. Least friction of the three; the risk is committing 7 days by accident.",
+    C: "<b>Four consequences, ticked one by one, then ARM.</b> The button is disabled until every box is checked. Highest friction, and the only variant that guarantees the user has read the device-wide deletion block.",
+  },
+  shielded: {
+    A: "<b>A notice on paper.</b> Names when you signed and when it lifts. 'freedomfrom cannot lift this early' closes the negotiation on the spot. Personality: a lawyer who is on your side.",
+    B: "<b>A number in the dark.</b> No app name, no explanation, no button, no scolding. The whole product's personality is a countdown and its own name. Risk: reads as broken rather than intentional.",
+    C: "<b>A status readout.</b> Deadline in ISO with a timezone, 'early exit: not available', and where the override lives. Treats you as an adult who wants facts. Risk: an ISO timestamp on a lock screen is cold.",
+  },
+  escape: {
+    A: "<b>'There is no button here'</b> — then the three routes as numbered clauses with what each actually costs. The refusal is argued for, not just enforced.",
+    B: "<b>Four lines, no argument.</b> Where the exit is, that it is recorded, that the other two routes don't work, and the honest ceiling. Nothing else.",
+    C: "<b>A table of all three routes</b> with works?/cost columns — including the uncomfortable YES on route 1. Then states why no in-app button exists. Most complete, least persuasive.",
+  },
+  expiry: {
+    A: "<b>Discharged, stamped.</b> A closing ceremony that mirrors the signing one, then 'sign another'. Risk: rewarding the end of a block trains the wrong thing.",
+    B: "<b>The screen turns light and says 'Ended.'</b> One word. The only celebration is the change in colour.",
+    C: "<b>outcome=COMPLETED appended to the history table.</b> The record is the reward. Shows every past commitment including broken ones.",
+  },
+  rearm: {
+    A: "<b>'Still in force.'</b> Explicitly refuses to discuss how the app came to be reinstalled — 'the term was fixed when it was signed'. Quiet per ADR 0001, but does naming it at all already editorialise?",
+    B: "<b>Just the countdown again.</b> Indistinguishable from a normal launch. The purest reading of 'silent re-arm'.",
+    C: "<b>'record recovered from Keychain'.</b> Says what happened mechanically without saying what it means about you — and this is where a degraded coverage flag most often shows up, since reinstall is what breaks tokens.",
+  },
+};
+
+/* ============================================================ render ============================================================ */
+
+const screenEl = document.getElementById("screen");
+
+function render() {
+  const s = STEPS[step];
+  const v = VARIANTS[variant];
+  let html;
+
+  if (s.key === "shielded") {
+    html = running() || state.deadline ? v.shielded() : v.commit();
+  } else if (s.key === "expiry") {
+    html = v.expiry();
+  } else if (s.key === "rearm") {
+    html = state.deadline ? v.rearm() : v.firstrun();
+  } else {
+    html = v[s.key]();
+  }
+
+  screenEl.className = "screen v-" + variant.toLowerCase();
+  screenEl.innerHTML = html;
+
+  document.getElementById("renderedBy").innerHTML = `drawn by <b>${s.by}</b>`;
+  document.getElementById("vLabel").innerHTML = `${variant} — ${VARIANT_NAMES[variant]}<small>${step + 1}/${STEPS.length} · ${s.name}</small>`;
+  document.getElementById("note").innerHTML = NOTES[s.key][variant];
+
+  document.getElementById("steps").innerHTML = STEPS.map((st, i) =>
+    `<button data-step="${i}" class="${i === step ? "on" : ""}"><b>${i + 1}</b>${st.name}</button>`).join("");
+
+  const b = (x) => x ? `<span class="t">yes</span>` : `<span class="f">no</span>`;
+  document.getElementById("stateBox").innerHTML = `
+    <div class="r"><span>authorized</span><span>${b(state.authorized)}</span></div>
+    <div class="r"><span>targets</span><span>${state.apps} apps · ${state.sites.length} web</span></div>
+    <div class="r"><span>duration</span><span>${durWords(state.durationMin)}</span></div>
+    <div class="r"><span>deadline</span><span>${state.deadline ? fmtISO(state.deadline) : "—"}</span></div>
+    <div class="r"><span>remaining</span><span>${state.deadline ? fmtRemaining(state.deadline - now()) : "—"}</span></div>
+    <div class="r"><span>shield applied</span><span>${b(running() && state.authorized)}</span></div>
+    <div class="r"><span>restrictions</span><span>${b(state.restrictions && state.authorized)}</span></div>
+    <div class="r"><span>degraded</span><span>${state.degraded ? `<span class="w">yes</span>` : `<span class="f">no</span>`}</span></div>
+    <div class="r"><span>deleted once</span><span>${b(state.wasDeleted)}</span></div>
+    <div class="r"><span>history</span><span>${state.history.length ? state.history.map(h => h.outcome[0]).join(" ") : "empty"}</span></div>
+    <div class="r"><span>clock offset</span><span>${state.clockOffset ? "+" + fmtRemaining(state.clockOffset) : "none"}</span></div>`;
+
+  syncURL();
+}
+
+function syncURL() {
+  const u = new URL(location.href);
+  u.searchParams.set("variant", variant);
+  u.searchParams.set("step", String(step));
+  history.replaceState(null, "", u);
+}
+
+/* ============================================================ interaction ============================================================ */
+
+function closeCommitment(outcome) {
+  if (state.deadline === null) return;
+  state.history.push({ min: state.durationMin, outcome });
+  state.deadline = null;
+  state.startedAt = null;
+  state.restrictions = false;
+  state.degraded = false;
+}
+
+screenEl.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]");
+  if (!el) return;
+  const act = el.dataset.act;
+
+  if (act === "ask-auth") { state.sheet = "auth"; render(); }
+  else if (act === "auth-yes") { state.authorized = true; state.sheet = null; step = 1; render(); }
+  else if (act === "auth-no") { state.sheet = null; render(); }
+  else if (act === "open-picker") { state.sheet = "picker"; render(); }
+  else if (act === "pick-cancel") { state.sheet = null; render(); }
+  else if (act === "pick-toggle") { const i = +el.dataset.i; state.pickerSel[i] = !state.pickerSel[i]; render(); }
+  else if (act === "pick-done") { state.apps = state.pickerSel.filter(Boolean).length; state.sheet = null; render(); }
+  else if (act === "dur") { state.durationMin = +el.dataset.m; render(); }
+  else if (act === "ack") { const k = el.dataset.k; state.ack[k] = !state.ack[k]; render(); }
+  else if (act === "go-commit") { step = 2; render(); }
+  else if (act === "commit") { doCommit(); }
+  else if (act === "new") { closeCommitment("COMPLETED"); state.ack = {}; step = 2; render(); }
+  else if (act === "noop") { /* nothing */ }
+  else if (act.startsWith("step:")) { step = +act.split(":")[1]; render(); }
+});
+
+screenEl.addEventListener("submit", (e) => {
+  const f = e.target.closest('[data-act="add-site-form"]');
+  if (!f) return;
+  e.preventDefault();
+  const val = f.site.value.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (val && !state.sites.includes(val)) state.sites.push(val);
+  f.site.value = "";
+  render();
+});
+
+function doCommit() {
+  state.startedAt = now();
+  state.deadline = now() + state.durationMin * 60000;
+  state.restrictions = true;
+  state.degraded = false;
+  step = 3;
+  render();
+}
+
+/* press-and-hold, shared by A (sign) and B (hold anywhere) */
+let holdTimer = null;
+screenEl.addEventListener("pointerdown", (e) => {
+  const el = e.target.closest('[data-act="hold"]');
+  if (!el) return;
+  const ms = +el.dataset.ms || 1500;
+  const fill = el.querySelector(".fill");
+  const t0 = performance.now();
+  const tick = () => {
+    const p = Math.min(1, (performance.now() - t0) / ms);
+    fill.style.width = (p * 100) + "%";
+    if (p >= 1) {
+      el.classList.add("done");
+      const ink = document.getElementById("sigInk");
+      if (ink) ink.textContent = "— signed —";
+      setTimeout(doCommit, 220);
+      holdTimer = null;
+      return;
+    }
+    holdTimer = requestAnimationFrame(tick);
+  };
+  holdTimer = requestAnimationFrame(tick);
+  const cancel = () => {
+    if (holdTimer) cancelAnimationFrame(holdTimer);
+    holdTimer = null;
+    if (fill) fill.style.width = "0%";
+    window.removeEventListener("pointerup", cancel);
+    window.removeEventListener("pointercancel", cancel);
+  };
+  window.addEventListener("pointerup", cancel);
+  window.addEventListener("pointercancel", cancel);
+});
+
+screenEl.addEventListener("input", (e) => {
+  const el = e.target.closest('[data-act="dur-range"]');
+  if (!el) return;
+  state.durationMin = DUR_PRESETS[+el.value];
+  render();
+});
+
+/* step rail */
+document.getElementById("steps").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-step]");
+  if (!b) return;
+  step = +b.dataset.step;
+  render();
+});
+
+/* simulate panel */
+document.querySelector(".sim").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-sim]");
+  if (!b) return;
+  const k = b.dataset.sim;
+  if (k === "hour") state.clockOffset += 3600e3;
+  else if (k === "day") state.clockOffset += 86400e3;
+  else if (k === "expire") {
+    if (state.deadline) { state.clockOffset += state.deadline - now() + 1000; closeCommitment("COMPLETED"); step = 5; }
+  }
+  else if (k === "degrade") state.degraded = true;
+  else if (k === "reinstall") {
+    state.wasDeleted = true;
+    state.degraded = true;          // reinstall is exactly where tokens stop resolving
+    state.sheet = null;
+    step = 6;
+  }
+  else if (k === "revoke") {
+    state.authorized = false;
+    closeCommitment("BROKEN");
+    step = 4;
+  }
+  else if (k === "reset") { state = structuredClone(DEFAULT_STATE); step = 0; }
+  render();
+});
+
+/* variant switcher */
+function setVariant(delta) {
+  const i = ORDER.indexOf(variant);
+  variant = ORDER[(i + delta + ORDER.length) % ORDER.length];
+  render();
+}
+document.getElementById("prevV").onclick = () => setVariant(-1);
+document.getElementById("nextV").onclick = () => setVariant(1);
+
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") { setVariant(-1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { setVariant(1); e.preventDefault(); }
+  else if (e.key === "ArrowDown") { step = (step + 1) % STEPS.length; render(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { step = (step - 1 + STEPS.length) % STEPS.length; render(); e.preventDefault(); }
+});
+
+/* boot */
+const q = new URL(location.href).searchParams;
+if (ORDER.includes((q.get("variant") || "").toUpperCase())) variant = q.get("variant").toUpperCase();
+if (q.get("step") !== null && !isNaN(+q.get("step"))) step = Math.max(0, Math.min(STEPS.length - 1, +q.get("step")));
+
+/* seed a plausible state so any step is reachable cold */
+state.authorized = true;
+state.apps = 3;
+state.sites = ["reddit.com", "news.ycombinator.com"];
+if (step >= 3) {
+  state.startedAt = Date.now();
+  state.deadline = Date.now() + state.durationMin * 60000;
+  state.restrictions = true;
+  ACKS.forEach(([k]) => state.ack[k] = true);
+}
+if (step === 0) { state.authorized = false; state.apps = 0; state.sites = []; }
+
+render();
+setInterval(() => { if (state.deadline || step >= 3) render(); }, 1000);
+</script>
+</body>
+</html>
