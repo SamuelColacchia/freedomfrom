@@ -241,19 +241,31 @@ final class AppModel {
                 domains: domains
             ))
 
-        // The write and then the same reconciliation every launch runs: it
-        // applies the shield and the filter, mirrors the deadline, and
-        // registers the first window. Off the main actor for the same reason
-        // launch is — this is a Keychain write followed by six daemon calls,
-        // and blocking here freezes the app the instant the hold completes,
-        // which reads as the hold having failed.
+        // The write *is* the commitment. Once the record holds it the deadline
+        // is real, absolute, and outlives the app being deleted — so the screen
+        // can change here, on a `SecItem` write measured in milliseconds.
+        // Bound as a constant because the closure below is `@Sendable`, and a
+        // `var` still being mutated in this scope cannot cross into one.
+        let toWrite = committed
         let reconciler = reconciler
-        let state = await Task.detached(priority: .userInitiated) { () -> Reconciler.State? in
-            guard reconciler.write(committed) else { return nil }
-            return reconciler.run(now: now)
+        let written = await Task.detached(priority: .userInitiated) { () -> Bool in
+            reconciler.write(toWrite)
         }.value
+        guard written else { return }
 
-        if let state { apply(state) }
+        record = toWrite
+        // Nothing is enforced yet, and the countdown states coverage rather
+        // than what was named (ADR 0005). Zero is the true answer for the
+        // moment it is on screen, and it corrects upward when the shield lands.
+        coverage = Coverage(resolved: 0, named: 0)
+
+        // Enforcement follows, behind a countdown that is already drawn. Waiting
+        // for it before routing is what put a hold that *had* fired behind a
+        // screen that had not moved: five `ManagedSettings` writes, a shared
+        // file, and two `DeviceActivityCenter` calls, which on a device is not
+        // milliseconds. The shield coming up minutes after the bar filled was
+        // this, and it read as the button being dead.
+        apply(await offMainActor())
     }
 
     // MARK: - Afterwards

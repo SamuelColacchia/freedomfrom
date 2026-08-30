@@ -88,25 +88,24 @@ struct QuietButton: View {
 /// Releasing early is not a failure to report — the fill simply retreats and
 /// nothing has happened, which is the same silence every other refused action
 /// in the app gets.
-/// There is deliberately no `onLongPressGesture` here.
+/// There is deliberately no `onLongPressGesture` here — though not for the
+/// reason two earlier commits gave.
 ///
-/// It was the obvious way to write this and it does not work. On iOS 18 and
-/// later the long-press recogniser reports the press beginning — so
-/// `onPressingChanged` fires and the bar fills the whole way — and then never
-/// reaches its completion, so `perform` is never called. Apple has the report
-/// as FB15711941, still reproducing on 18.3, and the durations this app needs
-/// are exactly the ones that fail: the workarounds offered are all in the
-/// tenths of a second.
+/// The hold was reported dead twice, both times as "it fills and then nothing".
+/// It was blamed first on `maximumDistance: .infinity`, then on FB15711941, the
+/// iOS 18 regression where the long-press recogniser reports the press
+/// beginning and never reaches its completion. **Both diagnoses were wrong.**
+/// The hold had been firing the whole time. `commit()` was holding the screen
+/// for the length of six daemon round-trips, and the shield came up minutes
+/// later with the button still sitting there — see `AppModel.commit`, which is
+/// where the actual fix is.
 ///
-/// Two attempts were made to keep the recogniser by tuning `maximumDistance`,
-/// first `.infinity` and then a large finite value. Neither changed anything,
-/// because the distance was never what was wrong.
-///
-/// So the recogniser is gone from the path that matters. What replaces it is a
-/// zero-distance drag, which is only asked the two questions it answers
-/// reliably — the finger is down, the finger is up — and an explicit clock
-/// between them. This is what the production hold-to-confirm implementations in
-/// the wild do, for this reason.
+/// The drag stays, on reasons that stand without that story. It is asked only
+/// the two questions it answers reliably — the finger is down, the finger is up
+/// — so nothing about the completion rides on a recogniser's state machine. It
+/// needs no `maximumDistance`, because a drag does not cancel itself when a
+/// thumb wanders. And it costs a `GeometryReader`, so the gesture sits on a
+/// view whose layout never moves underneath it.
 struct HoldToConfirm: View {
     let title: String
     let duration: TimeInterval
@@ -117,6 +116,10 @@ struct HoldToConfirm: View {
     /// The running hold, and the flag that makes starting one idempotent: a
     /// drag reports every tremor in a thumb, and only the first begins a hold.
     @State private var holding: Task<Void, Never>?
+
+    /// When the finger went down, and whether this press has already counted.
+    @State private var startedAt: Date?
+    @State private var fired = false
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -153,19 +156,37 @@ struct HoldToConfirm: View {
     private func begin() {
         guard holding == nil else { return }
 
+        startedAt = Date()
+        fired = false
         withAnimation(.linear(duration: duration)) { progress = 1 }
         holding = Task { @MainActor in
             try? await Task.sleep(for: .seconds(duration))
             // A cancelled sleep is a hold released early, which is not a
             // failure to report: the bar retreats and nothing has happened.
             guard !Task.isCancelled else { return }
-            action()
+            fire()
         }
     }
 
     private func end() {
         holding?.cancel()
         holding = nil
+
+        // The bar reaches full a frame or two before a sleep armed for the same
+        // duration returns, so a thumb lifted *on* the fill lands in between and
+        // would cancel a hold that was already long enough. Elapsed time settles
+        // it rather than whichever of the two happened to win.
+        if let startedAt, Date().timeIntervalSince(startedAt) >= duration { fire() }
+        startedAt = nil
+
         withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
+    }
+
+    /// Once per press, from whichever of the two paths reaches it first. The
+    /// action is irreversible, so arriving twice is not a thing to leave open.
+    private func fire() {
+        guard !fired else { return }
+        fired = true
+        action()
     }
 }
