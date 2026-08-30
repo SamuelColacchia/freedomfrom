@@ -56,6 +56,31 @@ final class HoldToConfirmUITests: XCTestCase {
             """)
     }
 
+    /// Released the instant the bar looks full, which is what a person actually
+    /// does — and what the 3-second press above never tests, because it hands
+    /// the hold a second and a half of slack no thumb ever gives it.
+    ///
+    /// The screen preselects fifteen minutes, whose hold is 1.5s.
+    func testAHoldReleasedTheMomentItFillsStillFires() throws {
+        let app = XCUIApplication()
+        app.launch()
+        declineAnyAuthorizationPrompt(timeout: 2)
+
+        try reachCommitScreen(in: app)
+        XCTAssertFalse(authorizationPrompt.exists)
+
+        holdButton(in: app).press(forDuration: 1.5)
+
+        XCTAssertTrue(
+            authorizationPrompt.waitForExistence(timeout: 8),
+            """
+            Held for exactly the duration it asks for and nothing fired. The bar \
+            reaches full before the clock does, so releasing on the fill cancels \
+            the action — which is what a person sees as "it filled, then nothing".
+            \(app.debugDescription)
+            """)
+    }
+
     /// Releasing early does nothing, which is the other half of the contract:
     /// the hold has to be a hold, not a tap with a slow animation in front of it.
     func testAReleasedHoldDoesNothing() throws {
