@@ -4,6 +4,8 @@ v1's seven screens were prototyped as three whole personalities — a signed con
 
 The prototype is the primary source, on branch [`prototype/v1-commit-flow`](https://github.com/SamuelColacchia/freedomfrom/tree/prototype/v1-commit-flow) — a single throwaway HTML file, all three personalities, all seven steps, with the two amendments below applied to the winner.
 
+> **Amended in wording by [ADR 0007](./0007-a-line-with-spurs.md).** *The only ceremony in the app is the hold that commits you* becomes **the hold means this cannot be undone**: clean slate is held too, on the longest hold in v1. Same gesture, same meaning, one more place. The rule of one statement and one action is untouched and is now an invariant with no exceptions.
+
 ## The decided flow
 
 | Step | Drawn by | Shape |
@@ -43,7 +45,7 @@ Seven steps, not the six the ticket listed. Re-arm after delete-and-reinstall wa
 - **The shield is not an information surface.** It says nothing, so every fact about a running commitment — remaining time, deadline, degraded coverage — has to be reachable inside the app. The spec cannot assume the user learns anything from the shield beyond that time remains.
 - **Consent rests on one sentence.** There is no preflight panel and no ritual to fall back on. If a tester ever says "I didn't know it would stop me deleting other apps", the fix is that sentence, not a new screen. That makes it a testable claim rather than a design opinion.
 - **The product does not defend itself at the escape.** B states where the exit is, that it is recorded, and that the other routes do not work — then stops. Accepted knowingly: the one moment a user most wants an argument is the moment they get four lines. The alternative was importing another voice for a single screen.
-- **The history is the only place a break is visible**, since expiry does not celebrate and re-arm does not confront. Consistent with ADR 0001's quiet record, but it has to be reachable from screens that are deliberately wordless — a navigation problem the build spec has to solve rather than inherit.
+- **The history is the only place a break is visible**, since expiry does not celebrate and re-arm does not confront. Consistent with ADR 0001's quiet record, but it has to be reachable from screens that are deliberately wordless — a navigation problem the build spec has to solve rather than inherit. **Solved by [ADR 0007](./0007-a-line-with-spurs.md)**: a pushed spur off the targets root, reachable only when nothing is running, and absent from the screen when there is no history.
 - **Committing is a tap then a hold.** If it proves too easy in use, the fix is lengthening the hold, not adding a confirmation dialog — a dialog is a second tap, not a second thought.
 - **One type treatment, not two.** A direct consequence of picking one personality instead of the mix.
 - **A `ShieldAction` extension stays deferred.** ADR 0002 deferred it because a shield button would have nothing to do; the decided shield has no button at all.
