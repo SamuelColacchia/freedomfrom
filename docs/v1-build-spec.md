@@ -108,7 +108,7 @@ Decided by [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-mod
 - Every signed target carries exactly two entitlements: `com.apple.developer.family-controls`, and a keychain access group of `$(AppIdentifierPrefix)com.samuelcolacchia.freedomfrom`.
 - Shared build settings: `IPHONEOS_DEPLOYMENT_TARGET 26.0`, `TARGETED_DEVICE_FAMILY "1,2"`, `CODE_SIGN_STYLE Automatic`, `DEVELOPMENT_TEAM 6989TSP54U`.
 - Both extensions and the package build with `APPLICATION_EXTENSION_API_ONLY YES`; the extensions also set `SKIP_INSTALL YES`.
-- **There is no App Group.** Nothing reads one: shared state is in the Keychain, and a named `ManagedSettingsStore` is shared with extensions by the framework itself. Re-adding it is the amendment if hardware check S1 comes back red.
+- **There is one App Group**, `group.com.samuelcolacchia.freedomfrom`, on all three targets. It holds the running commitment's deadline and nothing else. Hardware check S1 came back red for `ShieldConfig` alone — that process has no Keychain at all, `errSecNotAvailable` on both read and write under a correct entitlement — so the deadline reaches the shield through the shared container. See the amendment on [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md). `-allowProvisioningUpdates` creates the group unattended; no portal visit is needed.
 - **No `ShieldAction` extension.** The decided shield has no button, so there is nothing for it to do. Adding it later is a `project.yml` block and a folder.
 - **Project generation is XcodeGen.** `project.yml` is committed; the generated `.xcodeproj` is gitignored and regenerated on every sync.
 - **`Package.swift` needs `swift-tools-version:6.2`.** Naming `.iOS(.v26)` under 6.0 fails with `'v26' is unavailable`. Declare `platforms: [.iOS(.v26), .macOS(.v13)]` so the kit's tests can run on the Mac.
@@ -138,6 +138,12 @@ Three rules follow, and they are the point of the design:
 - **The deadline is authoritative.** Absolute wall-clock time. Nothing shortens it. Everything reconciles against it rather than trusting a `DeviceActivity` callback to arrive.
 - **A target that no longer resolves degrades coverage, never duration.** It is dropped from what is applied, the commitment is marked degraded, and the deadline stands.
 - **A break is a surviving record met by a fresh install.** Because the record outlives app deletion, an app that launches and finds a commitment still running knows it was deleted mid-commitment. That is the only signal available.
+
+**One value lives outside the record**, and only one: the running commitment's deadline, mirrored into the App Group at commit and cleared at release. `ShieldConfig` reads it; nothing else does. It is derived and never authoritative, it is an atomic file write rather than `UserDefaults`, and a stale copy can only cost a wrong number on a shield or a late release, never an early one.
+
+**Sharpened here: a second thing lives outside the record, and it holds no value at all.** The break rule above says an app that launches and finds a commitment still running knows it was deleted mid-commitment. Read literally that is every launch, which would mark every commitment broken the second time it was opened. The missing half is a zero-byte marker in the app's *own* sandbox — the one store here that does **not** survive deletion. Record present, marker absent, therefore this install is not the one that committed. It carries nothing; its existence is the whole signal, so a read failure and an absent file are deliberately the same answer.
+
+Two smaller consequences of building it: the deadline mirror is written at **every** reconciliation rather than only at commit, so a mirror lost to a reinstall is repaired rather than left missing for the life of the commitment; and release writes `nil` to `webContent.blockedByFilter` rather than the `.none` written at §7, because that property is an optional whose wrapped type also has a `none` case and `.none` would resolve to `Optional.none` regardless. Unset is what release means.
 
 **The two flags are not part of "everything you authored."** A clean slate erases the history and the draft; first run still shows once, ever, and a pending "Ended." survives it. See [ADR 0008](./adr/0008-the-root-holds-a-draft.md).
 

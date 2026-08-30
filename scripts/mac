@@ -20,6 +20,14 @@ KIT=FreedomFromKit
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# The hardware pass commits and observes fifteen times, and the product offers
+# no way out but the Screen Time revoke — which is itself check X1, and taking
+# it repeatedly contaminates the clean run. Setting FREEDOMFROM_HARDWARE_PASS=1
+# compiles in a release control that no other build can contain, because the
+# condition is empty unless this variable puts it there.
+PASS=""
+[[ -n "${FREEDOMFROM_HARDWARE_PASS:-}" ]] && PASS="FREEDOMFROM_HARDWARE_PASS=HARDWARE_PASS"
+
 # Run a script on the Mac. The script arrives on stdin, so nothing is quoted twice.
 remote() { ssh -o BatchMode=yes "$HOST" bash -s; }
 
@@ -44,7 +52,7 @@ xcodegen generate --quiet
 set -o pipefail
 xcodebuild -project $SCHEME.xcodeproj -scheme $SCHEME \\
   -destination 'platform=iOS Simulator,name=$SIM' \\
-  -derivedDataPath "\$R/derived" build 2>&1 \\
+  -derivedDataPath "\$R/derived" $PASS build 2>&1 \\
   | tee "\$R/logs/build.log" | xcbeautify --quiet --disable-logging
 EOF
 }
@@ -72,6 +80,20 @@ echo "--- $SUBSYSTEM ---"
 xcrun simctl spawn booted log show --last 2m --style compact --info --debug \\
   --predicate 'subsystem == "$SUBSYSTEM"' 2>/dev/null | tail -n 60
 EOF
+}
+
+# The app became a UI at work item 5, and until now nothing in the loop could
+# look at one. A screenshot is as far as a headless simulator goes: simctl can
+# boot, install, launch and capture, but it cannot tap, so this reads the screen
+# the app happens to be on rather than driving it there.
+cmd_shot() {
+  local out="${1:-$REPO/shot.png}"
+  remote <<EOF
+set -euo pipefail
+xcrun simctl io booted screenshot --type=png "\$HOME/$ROOT/logs/shot.png" >/dev/null 2>&1
+EOF
+  scp -q -o BatchMode=yes "$HOST:$ROOT/logs/shot.png" "$out"
+  echo "$out"
 }
 
 cmd_log() {
@@ -142,7 +164,7 @@ set -o pipefail
 xcodebuild -project $SCHEME.xcodeproj -scheme $SCHEME \\
   -destination 'generic/platform=iOS' \\
   -archivePath "\$R/derived/$SCHEME.xcarchive" \\
-  -allowProvisioningUpdates archive 2>&1 \\
+  -allowProvisioningUpdates $PASS archive 2>&1 \\
   | tee "\$R/logs/device.log" | xcbeautify --quiet --disable-logging
 xcrun devicectl device install app --device $DEVICE \\
   "\$R/derived/$SCHEME.xcarchive/Products/Applications/$SCHEME.app"
@@ -156,10 +178,14 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
   build            compile for the '$SIM' simulator. No signing, no human.
   test             swift test on $KIT, against Darwin Foundation.
   run [secs]       build, launch on the simulator, print the app's own log lines.
+  shot [file]      capture what the simulator is showing right now.
   log [mins]       re-read those log lines without rebuilding.
   rawlog [lines]   tail the unfiltered xcodebuild log.
   device           sign and install on the phone. Needs a cable and a human-unlocked socket.
   clean            drop the derived-data cache and the generated project.
+
+Set FREEDOMFROM_HARDWARE_PASS=1 to compile in a release control for the
+hardware pass. The product has none; no build without this variable can.
 
 Overridable: FREEDOMFROM_MAC_HOST FREEDOMFROM_MAC_ROOT FREEDOMFROM_SIM
              FREEDOMFROM_DEVICE FREEDOMFROM_SIGN_SOCKET
@@ -170,6 +196,7 @@ case "${1:-help}" in
   build)  shift; cmd_build ;;
   test)   shift; cmd_test ;;
   run)    shift; cmd_run "$@" ;;
+  shot)   shift; cmd_shot "$@" ;;
   log)    shift; cmd_log "$@" ;;
   rawlog) shift; cmd_rawlog "$@" ;;
   device) shift; cmd_device ;;

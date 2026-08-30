@@ -82,10 +82,10 @@ public struct Commitment: Equatable, Codable, Sendable {
     public let domains: [WebDomain]
     /// Permanent for the life of the commitment even if coverage returns: the
     /// mark records how it ran (ADR 0005).
-    public var isDegraded: Bool
+    public internal(set) var isDegraded: Bool
     /// Recorded once on first observation and never re-marked. A break marks a
     /// running commitment; it does not end one (ADR 0005).
-    public var isBroken: Bool
+    public internal(set) var isBroken: Bool
 
     public init(
         id: UUID = UUID(),

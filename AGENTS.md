@@ -15,6 +15,7 @@ there; this Linux box holds the repo and drives the agent skills.
 scripts/mac build          # compile for the simulator. ~1.7s warm. No signing, no human.
 scripts/mac test           # swift test on FreedomFromKit, against Darwin Foundation
 scripts/mac run [secs]     # build, launch on the simulator, print the app's own log lines
+scripts/mac shot [file]    # capture what the simulator is showing right now
 scripts/mac log [mins]     # re-read those log lines without rebuilding
 scripts/mac rawlog [lines] # tail the unfiltered xcodebuild log
 scripts/mac device         # sign and install on the phone. Needs a human.

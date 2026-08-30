@@ -40,7 +40,7 @@ public struct KeychainRecordStore: Sendable {
     /// record we cannot read" lead to opposite behaviour, since the first means
     /// nothing is running and the second means we must not assume that.
     public func read() throws -> Record? {
-        var query = baseQuery()
+        var query = searchQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -64,7 +64,7 @@ public struct KeychainRecordStore: Sendable {
 
     public func write(_ record: Record) throws {
         let data = try RecordCodec.encode(record)
-        let query = baseQuery()
+        let query = searchQuery()
 
         let update: [String: Any] = [kSecValueData as String: data]
         let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
@@ -75,6 +75,11 @@ public struct KeychainRecordStore: Sendable {
         case errSecItemNotFound:
             var insert = query
             insert[kSecValueData as String] = data
+            // Only an insert may carry it: kSecAttrAccessible is an attribute
+            // of a stored item, not a search term, and a process with a
+            // tighter sandbox than the app's rejects the query outright
+            // rather than ignoring it.
+            insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
             let addStatus = SecItemAdd(insert as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw Failure.keychain(addStatus) }
         default:
@@ -86,20 +91,19 @@ public struct KeychainRecordStore: Sendable {
     /// erases what you authored and leaves the first-run flag alone
     /// (ADR 0008), and goes through `Record.cleanSlate()` instead.
     public func deleteEverything() throws {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+        let status = SecItemDelete(searchQuery() as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw Failure.keychain(status)
         }
     }
 
-    private func baseQuery() -> [String: Any] {
+    /// What identifies the one item. Search terms only: an attribute that
+    /// describes how an item is *stored* belongs on the insert, not here.
+    private func searchQuery() -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            // After first unlock, because an extension can wake before the user
-            // has touched the device but never before the first unlock.
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
             // The two devices are islands by design (ADR 0002).
             kSecAttrSynchronizable as String: false,
         ]
