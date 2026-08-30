@@ -107,6 +107,14 @@ public struct Log: Sendable {
         logger.error("window registration failed reason=\(reason, privacy: .public)")
     }
 
+    /// A window deliberately not registered, which is not a failure and must not
+    /// read as one. Only the hardware-pass build can reach this, and a run that
+    /// cannot see the suppression in the archive cannot tell a disarmed
+    /// `Monitor` from one that simply never woke.
+    public func windowSuppressed(_ reason: String) {
+        logger.notice("window suppressed reason=\(reason, privacy: .public)")
+    }
+
     /// A commitment can end late, never early. How late is the observation.
     public func released(lateBy seconds: TimeInterval) {
         logger.notice("released late_by_seconds=\(Int(seconds.rounded()), privacy: .public)")

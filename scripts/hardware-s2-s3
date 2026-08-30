@@ -544,12 +544,22 @@ printf '%s\n' "$monitor" > "$EVIDENCE/s2-monitor.log"
 sc_woke=no;     grep -q "woke reason=shielding" <<<"$shieldconfig" && sc_woke=yes
 sc_released=no; grep -q "store mutation release landed=true" <<<"$shieldconfig" && sc_released=yes
 mon_released=no; grep -q "store mutation release landed=true" <<<"$monitor" && mon_released=yes
+mon_disarmed=no; grep -q "window suppressed" <<<"$(log_for app)$monitor" && mon_disarmed=yes
 
 note "shieldconfig woke:               $sc_woke"
 note "shieldconfig logged the release: $sc_released"
 note "monitor logged the release:      $mon_released"
+note "monitor's final window disarmed: $mon_disarmed"
 note "what you saw on the first open:  $S2_FIRST"
 say ""
+
+if [[ "$mon_disarmed" == no ]]; then
+  warn "The final window was armed, so this run was a race rather than a test."
+  note "The hardware-pass build suppresses it precisely so ShieldConfig is the"
+  note "only process that can release. No 'window suppressed' line means the phone"
+  note "is running a build without that, and the Monitor will usually win."
+  say ""
+fi
 
 # The screen is checked before the log, because on this one answer it is the
 # stronger evidence. `ShieldConfig` draws a countdown only from a deadline that
@@ -568,11 +578,29 @@ if [[ "$S2_FIRST" == a ]]; then
   record_result S2 "Inconclusive, re-run" \
     "The target was opened before the deadline — \`ShieldConfig\` drew a live countdown, which it does only while \`shouldRelease\` is false" \
     "None — not a result"
-elif [[ "$sc_woke" == no && "$mon_released" == yes ]]; then
-  warn "INCONCLUSIVE — the Monitor won the race and released before the shield drew."
-  say "This says nothing about S2. Re-run from stage 3, and open the target sooner."
+elif [[ "$mon_released" == yes && "$sc_released" == no ]]; then
+  # Tested on the release, not on whether ShieldConfig woke. It wakes every time
+  # a shielded target is opened, so "it never woke at all" is not what a lost
+  # race looks like — and scoring on that let the first real run fall through to
+  # RED and amend two ADRs for a race the human could not have won.
+  warn "INCONCLUSIVE — the Monitor released first. The gate was never reached."
+  say "ShieldConfig can only take a release nothing else has already taken."
+  say "Whatever it logged, it did not discover this deadline."
+  say ""
+  if [[ "$mon_disarmed" == no ]]; then
+    say "Install the hardware-pass build, which disarms the final window, and re-run."
+  else
+    say "The window was suppressed, so something else released. Read docs/evidence/s2-s3.log."
+  fi
   record_result S2 "Inconclusive, re-run" \
-    "Monitor released at the window boundary before \`ShieldConfig\` drew; the gate was never reached" \
+    "\`monitor\` logged the release at the window boundary; \`ShieldConfig\` never reached its release path" \
+    "None — not a result"
+elif [[ "$S2_FIRST" == c ]]; then
+  warn "INCONCLUSIVE — no shield was drawn, so ShieldConfig never ran for that open."
+  say "An app that opens normally is an app with no shield on it. Enforcement was"
+  say "already gone, or was never applied, and either way the gate was not reached."
+  record_result S2 "Inconclusive, re-run" \
+    "The target opened with no shield, so \`ShieldConfig\` was never invoked for it" \
     "None — not a result"
 elif [[ "$sc_woke" == no ]]; then
   warn "INCONCLUSIVE — ShieldConfig left no trace at all."
@@ -646,120 +674,21 @@ fi
 pause
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
-stage "S3: does a stored selection come back checked?"
-say "S3 asks whether a FamilyActivitySelection decoded from the Keychain hands"
-say "back to FamilyActivityPicker with its apps still checked. ADR 0008's draft"
-say "rests entirely on it, and it cannot be answered anywhere but on a device."
+stage "S3: already answered, and no longer testable here"
+say "S3 asked whether a FamilyActivitySelection decoded from the Keychain hands"
+say "back to FamilyActivityPicker with its apps still checked. It came back red,"
+say "and its bound amendment has been applied: ADR 0008's draft keeps the typed"
+say "web domains and the length, and apps are re-picked every time."
 say ""
-step "Open freedomfrom."
-step "If a commitment is still running, tap the orange 'release · hardware-pass build'"
-note "  row at the bottom of the countdown, then continue past 'Ended.'"
-step "On Targets, tap 'Choose apps' and check TWO apps."
-step "Dismiss the picker. The count should read 2."
+warn "So this stage cannot be walked any more, and is skipped rather than scored."
+note "The code caught up with that amendment in #38: the app no longer stores a"
+note "selection or restores one into the picker. Asking a build built not to"
+note "remember whether it remembers can only produce 'the picker arrived empty',"
+note "which is #38 working rather than anything about the platform."
 say ""
-warn "Now force-quit freedomfrom, then open it again."
-say ""
-step "On Targets, tap 'Choose apps' once more."
-
-say ""
-say "In the picker that just opened:"
-note "  a  both apps are checked"
-note "  b  some are checked, some are not"
-note "  c  nothing is checked"
-ask S3_SEEN "a / b / c:"
-write_env S3_SEEN "$S3_SEEN"
-
-ask S3_COUNT "Before you opened the picker, what number did Targets show?"
-write_env S3_COUNT "$S3_COUNT"
-
-case "$S3_SEEN" in
-  a)
-    printf '  %s✓ GREEN%s — the selection round-tripped.\n' "$GREEN" "$RESET"
-    record_result S3 "**Green**" \
-      "Two apps stored, force-quit, relaunched; the picker arrived with both checked and Targets read $S3_COUNT" \
-      "None"
-    ;;
-  b)
-    printf '  %s✗ RED%s — a partial round-trip is a red: the draft cannot be trusted to hold apps.\n' "$RED" "$RESET"
-    record_result S3 "**Red**, partially" \
-      "Some tokens came back checked and some did not; Targets read $S3_COUNT" \
-      "**Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended"
-    S3_RED=yes
-    ;;
-  *)
-    printf '  %s✗ RED%s — nothing came back checked.\n' "$RED" "$RESET"
-    record_result S3 "**Red**" \
-      "Two apps stored, force-quit, relaunched; the picker arrived empty while Targets read $S3_COUNT" \
-      "**Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended"
-    S3_RED=yes
-    ;;
-esac
-
-if [[ "${S3_RED:-no}" == yes ]]; then
-  amend_adr "0008-the-root-holds-a-draft.md" \
-    "## Amended by hardware: the draft keeps words, not apps" <<'ADR0008'
-> Hardware smoke check S3 came back **red**. A `FamilyActivitySelection` decoded
-> from the Keychain does not hand back to `FamilyActivityPicker` with its apps
-> checked, so the row this ADR wrote as "verified by opening the picker sheet,
-> which arrives with them checked" describes something that does not happen.
-
-The draft keeps the typed web domains and the chosen length. **Apps are re-picked
-every time.**
-
-This is the option this ADR considered and rejected as "remembering typed domains
-only", now arrived at by evidence rather than by preference. Its objection stands
-and is simply paid: hunting apps through the system picker becomes a
-per-commitment cost, and the draft needs a rule about which half of a target set
-survives.
-
-Two things fall out of it, both improvements this ADR would not have chosen:
-
-- **The born-degraded path closes at source.** Every app token is freshly minted
-  and freshly seen, so a commitment can no longer be degraded at birth. The
-  concept is not removed — a token can still churn mid-commitment — but it stops
-  being reachable from the draft.
-- **The count on Targets stops being able to lie.** It reads what this session
-  picked, not what a stale encoding claims.
-
-What does not change: the entrance stays untaxed for everything the app can
-actually read back. ADR 0001's rule is unmoved, and the domains a user typed —
-the part of a target set with words — still survive an interruption.
-ADR0008
-  say ""
-  warn "The ADR is amended. The code is not: TargetsView and AppModel still store"
-  warn "and restore an encoded selection, and Draft still carries the field."
-  if confirm "Open an issue for the code change?"; then
-    if gh issue create \
-      --title "Drop apps from the draft: S3 came back red" \
-      --milestone v1 \
-      --label ready-for-agent \
-      --body "Hardware check S3 came back red, and [ADR 0008](../blob/main/docs/adr/0008-the-root-holds-a-draft.md) is amended in place: the draft keeps the typed web domains and the chosen length, and apps are re-picked every time.
-
-The decision is made. This is the code catching up with it.
-
-## What to change
-
-- \`Draft\` loses \`encodedSelection\` and \`namedTargetCount\`
-- \`AppModel\` stops restoring a selection into the picker's binding, and stops encoding one back on dismiss
-- \`TargetsView\`'s count reads what this session picked
-- The kit's draft tests lose their app-selection cases
-
-## Acceptance criteria
-
-- [ ] A relaunch lands on Targets with the typed domains and the length, and no apps
-- [ ] Committing still works from a freshly picked selection
-- [ ] \`scripts/mac test\` passes
-- [ ] Nothing reopens ADR 0008; the amendment already there is the decision" 2>/dev/null
-    then
-      printf '  %s✓ issue opened%s\n' "$GREEN" "$RESET"
-    else
-      SKIPPED+=("open an issue for the ADR 0008 code change")
-      warn "gh could not open the issue; do it by hand"
-    fi
-  else
-    SKIPPED+=("code change for the ADR 0008 amendment")
-  fi
-fi
+note "A run that scored it anyway would overwrite a real result — some tokens came"
+note "back checked and some did not — with a tautology. The row stands as it is."
+pause
 pause
 
 # ── 8 ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,43 @@
+Timestamp               Ty Process[PID:TID]
+2026-08-30 14:49:20.343 Df FreedomFrom[5252:5e681] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-08-30 14:49:20.343 Df FreedomFrom[5252:5e681] [com.samuelcolacchia.freedomfrom:app] woke reason=hardware-pass build
+2026-08-30 14:49:20.360 Df FreedomFrom[5252:5e681] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-08-30 14:49:20.361 Df FreedomFrom[5252:5e6a1] [com.samuelcolacchia.freedomfrom:app] record read found=true active=false
+2026-08-30 14:49:21.706 Df FreedomFrom[5252:5e6a4] [com.samuelcolacchia.freedomfrom:app] record written
+2026-08-30 14:49:42.786 Df FreedomFrom[5252:5e75b] [com.samuelcolacchia.freedomfrom:app] record written
+2026-08-30 14:49:42.788 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] record read found=true active=true
+2026-08-30 14:49:42.789 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] deadline 2026-08-30T22:04:42Z
+2026-08-30 14:49:42.789 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] coverage resolved=1 of named=1
+2026-08-30 14:49:42.839 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] store mutation enforcement landed=true
+2026-08-30 14:49:42.842 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] store mutation deadline mirror landed=true
+2026-08-30 14:49:43.081 Df FreedomFrom[5252:5e6a3] [com.samuelcolacchia.freedomfrom:app] window registered kind=final start=2026-08-30T22:04:42Z end=2026-09-06T22:04:42Z
+2026-08-30 14:50:13.158 Df ShieldConfig[5268:5ec91] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 14:50:13.160 Df ShieldConfig[5268:5ec91] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 14:50:13.160 Df ShieldConfig[5268:5ec91] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 14:50:13.184 Df ShieldConfig[5268:5ec8d] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 14:50:13.184 Df ShieldConfig[5268:5ec8d] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 14:50:13.184 Df ShieldConfig[5268:5ec8d] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 14:58:31.278 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 14:58:31.278 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 14:58:31.278 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 14:58:31.304 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 14:58:31.304 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 14:58:31.304 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:03:14.270 Df ShieldConfig[5268:608ce] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 15:03:14.270 Df ShieldConfig[5268:608ce] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 15:03:14.270 Df ShieldConfig[5268:608ce] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:03:14.297 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 15:03:14.297 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 15:03:14.297 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:03:38.580 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 15:03:38.580 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 15:03:38.580 Df ShieldConfig[5268:5ec90] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:03:38.607 Df ShieldConfig[5268:6099c] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-30 15:03:38.607 Df ShieldConfig[5268:6099c] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-30 15:03:38.607 Df ShieldConfig[5268:6099c] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:04:44.193 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] woke reason=intervalDidStart
+2026-08-30 15:04:44.196 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] record read found=true active=true
+2026-08-30 15:04:44.196 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] deadline 2026-08-30T22:04:42Z
+2026-08-30 15:04:44.228 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] store mutation release landed=true
+2026-08-30 15:04:44.228 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] released late_by_seconds=2
+2026-08-30 15:04:44.231 Df Monitor[5400:60b8b] [com.samuelcolacchia.freedomfrom:monitor] record written

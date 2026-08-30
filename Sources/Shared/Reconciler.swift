@@ -111,6 +111,21 @@ struct Reconciler: Sendable {
         }
 
         if let window = Reconciliation.nextWindow(deadline: active.deadline, now: Date()) {
+            #if HARDWARE_PASS
+                // Hardware check S2 asks whether `ShieldConfig` can mutate the
+                // store when it is the process that discovers a passed deadline.
+                // With the final window armed it never is: `Monitor` wakes on the
+                // same boundary and released two seconds past it on the first
+                // real run, before a person could open the target. Disarming that
+                // one window leaves the extension as the only thing that can
+                // release, which is the only way the gate is reachable at all.
+                //
+                // Walk windows stay, because they re-register rather than release.
+                if window.kind == .final {
+                    log.windowSuppressed("hardware-pass build, so S2 is not a race")
+                    return coverage
+                }
+            #endif
             do {
                 try Enforcement.register(window)
                 log.windowRegistered(window)
