@@ -130,7 +130,7 @@ The record holds four things:
 |---|---|
 | The **active commitment**, or none | started-at, absolute deadline, the encoded `FamilyActivitySelection`, the target handles named at commit, the canonical web domains, and the degraded and broken marks |
 | The **commitment history** | one closed commitment per entry, with its outcome |
-| The **draft** | the encoded selection, the app-target count, the domains, and the chosen length |
+| The **draft** | the domains and the chosen length. **Amended by S3:** the encoded selection and the app-target count were here until hardware check S3 came back red; apps are now re-picked every time and live only in the session that picked them |
 | Two **flags** | whether first run has been shown, and whether an "Ended." screen is pending |
 
 Three rules follow, and they are the point of the design:
@@ -169,9 +169,7 @@ public enum CommitmentLength: Equatable, Codable, Sendable {
 }
 
 public struct Draft: Equatable, Codable, Sendable {
-  public var encodedSelection: Data?     // opaque to the kit
-  public var namedTargetCount: Int       // so the root renders without decoding
-  public var domains: [WebDomain]
+  public var domains: [WebDomain]        // apps left here when S3 came back red
   public var length: CommitmentLength?
 }
 
@@ -331,9 +329,9 @@ Plus one screen freedomfrom does not draw in its own process:
 **Screen by screen.**
 
 - **Targets** is the busiest screen in the app, and it is the root, so it carries the weight the rest of the line does not: the count, "Choose apps", the domain field, the typed list, "Next", and — only when the history is non-empty — the history line. The line is **absent** when there is no history rather than present and empty.
-- **Targets arrives holding the draft**: the last selection (verified by opening the picker, which arrives with them checked), the last typed domains as text, and the last length selected on the Commit screen with its deadline sentence recomputed from now. The draft is written when the picker sheet returns, when a domain is committed with return, and when the app backgrounds — so a finished domain always survives an interruption and a half-typed one never does.
-- **Next is unreachable with nothing selected.** One typed domain is enough. This is a flow rule, not an error, so it needs no voice.
-- **Nothing prunes the draft.** A handle that no longer resolves stays in it, so a commitment can be degraded at birth. The honest cost, accepted: apps are a count, so a set assembled a month ago can be committed to without being looked at.
+- **Targets arrives holding the draft**: the last typed domains as text, and the last length selected on the Commit screen with its deadline sentence recomputed from now. The draft is written when a domain is committed with return, and when the app backgrounds — so a finished domain always survives an interruption and a half-typed one never does. **Amended by S3:** this line read "the last selection (verified by opening the picker, which arrives with them checked)" first. It does not arrive with them checked, so the selection is gone from the draft and the picker opens empty every launch. The count above it reads what this session picked.
+- **Next is unreachable with nothing selected.** One typed domain is enough. This is a flow rule, not an error, so it needs no voice. **Amended by S3:** the question now spans two places, since the apps are the session's and the domains are the draft's.
+- **Nothing prunes the draft.** A finished domain stays in it until you remove it. **Amended by S3:** this line read "a handle that no longer resolves stays in it, so a commitment can be degraded at birth". With apps out of the draft, every token is freshly minted and freshly seen, so born-degraded is no longer reachable — and the count on Targets stops being able to lie. Mid-commitment churn still degrades; that is unchanged.
 - **Commit's hold scales with what it buys**: about 1.5s at fifteen minutes, about 5s at thirty days and above, clamped at both ends. **Sharpened here:** interpolate linearly in `log(duration)` between those two anchors. ADR 0004 fixed the anchors and the principle, not the curve.
 - **Countdown states coverage**, not what the commitment named at commit time. This is the substitute for every message the app refuses to show, which makes coverage accuracy load-bearing rather than cosmetic.
 - **Escape** is four lines: where the exit is, that it takes about fifteen seconds, that it will be written down, that the other two routes do not work, and the honest ceiling. Then it stops. The product does not defend itself here.

@@ -9,8 +9,11 @@ import SwiftUI
 /// every re-entry path already ends here, so an idle screen announcing that
 /// nothing is running would be a hub wearing one screen (ADR 0007).
 ///
-/// It arrives holding the draft. Nothing prunes it: a handle that no longer
-/// resolves stays, so a commitment can be degraded at birth (ADR 0008).
+/// It arrives holding the draft — which is the typed domains and the length,
+/// and not the apps. Apps are picked here and held for this session only, so
+/// the count above is what this session chose rather than what an older
+/// encoding claims, and a commitment can no longer be degraded at birth
+/// (ADR 0008, as amended by hardware check S3).
 struct TargetsView: View {
     @Bindable var model: AppModel
 
@@ -27,7 +30,7 @@ struct TargetsView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Text("\(model.draft.namedTargetCount)")
+                Text("\(model.pickedTargetCount)")
                     .font(.system(size: 64, weight: .ultraLight))
                     .foregroundStyle(Quiet.ink)
                 Text("chosen")

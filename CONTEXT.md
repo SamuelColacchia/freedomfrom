@@ -15,7 +15,7 @@ An app or web domain chosen to be blocked for the duration of a commitment.
 _Avoid_: site, blocked app, selection
 
 **Draft**:
-What you would commit to if you held right now: the targets and the length, as last left on screen. It persists between commitments, survives the app being deleted, and changes only when you change it or erase it with a clean slate.
+What you would commit to if you held right now: the typed web domains and the length, as last left on screen. It persists between commitments, survives the app being deleted, and changes only when you change it or erase it with a clean slate. Apps are not in it — a stored selection does not come back checked, so they are re-picked every time and belong to the session that picked them (hardware check S3, ADR 0008 as amended).
 _Avoid_: selection, preset, template, last used
 
 **Deadline**:

@@ -38,34 +38,32 @@ public enum CommitmentLength: Equatable, Codable, Sendable {
     }
 }
 
-/// What you would commit to if you held right now: the targets and the length,
-/// as last left on screen. Persists between commitments and survives the app
-/// being deleted; only you and a clean slate edit it (ADR 0008).
+/// What you would commit to if you held right now, as last left on screen:
+/// the typed domains and the length. Persists between commitments and survives
+/// the app being deleted; only you and a clean slate edit it (ADR 0008).
+///
+/// **Apps are not here.** Hardware check S3 came back red — a stored selection
+/// does not hand back to the picker with its apps checked — so a draft that
+/// carried one would show a count nobody could act on and checkmarks that did
+/// not appear. Apps are re-picked every time, and live only in the session that
+/// picked them (ADR 0008, as amended).
+///
+/// A draft therefore cannot answer "is there enough to commit to" on its own.
+/// That question belongs to whoever also holds this session's picked apps, and
+/// there is deliberately no `isEmpty` here to be asked it by mistake.
 public struct Draft: Equatable, Codable, Sendable {
-    /// The encoded `FamilyActivitySelection`. Opaque to the kit.
-    public var encodedSelection: Data?
-    /// So the root renders a count without decoding anything.
-    public var namedTargetCount: Int
     public var domains: [WebDomain]
     public var length: CommitmentLength?
 
     public init(
-        encodedSelection: Data? = nil,
-        namedTargetCount: Int = 0,
         domains: [WebDomain] = [],
         length: CommitmentLength? = nil
     ) {
-        self.encodedSelection = encodedSelection
-        self.namedTargetCount = namedTargetCount
         self.domains = domains
         self.length = length
     }
 
     public static let empty = Draft()
-
-    public var isEmpty: Bool {
-        namedTargetCount == 0 && domains.isEmpty
-    }
 }
 
 /// A block of a chosen set of targets, running until a fixed deadline, which
