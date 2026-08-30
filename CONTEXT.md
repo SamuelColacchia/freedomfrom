@@ -32,16 +32,24 @@ _Avoid_: reset, wipe, clear
 
 ### Enforcement
 
+**Enforcement**:
+Whatever is holding a target: a shield for an app, the filter for a web domain. Coverage is the set of targets reached; enforcement is what reaches them.
+_Avoid_: blocking, protection
+
 **Shield**:
-Apple's interstitial that replaces a target's interface while a commitment runs. Per-target.
+Apple's interstitial that replaces an app target's interface while a commitment runs. Per-target, and apps only — a web domain is held by the filter instead.
 _Avoid_: block screen, overlay, paywall
 
+**Filter**:
+The web-content policy holding a commitment's web domains. What a blocked site shows belongs to iOS rather than to freedomfrom, and Safari's Private Browsing is off for as long as the filter is applied.
+_Avoid_: blocklist, web shield, content blocker
+
 **Coverage**:
-The targets a commitment is shielding right now, as against the targets it names. The two diverge when a target can no longer be identified, and coverage is worked out afresh every time anything reconciles.
-_Avoid_: scope, protection, enforcement
+The targets a commitment is enforcing right now, as against the targets it names. The two diverge when a target can no longer be identified, and coverage is worked out afresh every time anything reconciles.
+_Avoid_: scope, protection, reach
 
 **Restriction**:
-A device-wide setting the app applies for a commitment's duration — no app deletion, forced automatic date and time. Distinct from a shield, which applies only to chosen targets.
+A device-wide setting the app applies for a commitment's duration — no app deletion, forced automatic date and time. Distinct from enforcement, which applies only to chosen targets.
 _Avoid_: lock, protection, guard
 
 **Authorization**:
@@ -49,11 +57,11 @@ The user's grant of Family Controls access to the app. Revocable by the user at 
 _Avoid_: permission, consent, entitlement
 
 **Re-arm**:
-Reapplying the shield and restrictions to a commitment that is still running but has lost them — after the user revoked authorization, or deleted and reinstalled the app.
+Reapplying the enforcement and restrictions to a commitment that is still running but has lost them — after the user revoked authorization, or deleted and reinstalled the app.
 _Avoid_: restore, resume, reactivate
 
 **Release**:
-The app lifting a commitment's shield and restrictions because its deadline has passed. The counterpart to a break, which happens before the deadline. A release can arrive late — after the deadline, whenever something next runs to notice — but never early.
+The app lifting a commitment's enforcement and restrictions because its deadline has passed. The counterpart to a break, which happens before the deadline. A release can arrive late — after the deadline, whenever something next runs to notice — but never early.
 _Avoid_: unlock, unblock, expire, end
 
 ### Getting out

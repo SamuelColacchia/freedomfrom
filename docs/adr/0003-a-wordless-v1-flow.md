@@ -20,7 +20,9 @@ Seven steps, not the six the ticket listed. Re-arm after delete-and-reinstall wa
 
 > **The duration list is provisional above one week.** Its rows stop at seven days because `DeviceActivityCenter` caps a single *schedule* there — not because a week is the intended ceiling. v1 is required to express longer commitments; what replaces the top of the list, and what wakes the extension across a month, waits on [Decide whether v1 caps a commitment at one week or chains intervals](https://github.com/SamuelColacchia/freedomfrom/issues/16). Nothing else on this page depends on it: the deadline is already an arbitrary absolute instant (ADR 0002), and the tapped-list *shape* is what was decided here, not its last row.
 
-**Web domains are typed by hand, not chosen in the picker.** Application tokens are opaque, so a typed domain is the only part of a target set the app can read back to you — and it is the only thing on the targets screen that is words rather than a count. Conditional on an unverified API question: whether ManagedSettings can shield an arbitrary typed domain at all, tracked on [Whether a hand-typed web domain can be shielded at all](https://github.com/SamuelColacchia/freedomfrom/issues/15).
+**Web domains are typed by hand, not chosen in the picker.** Application tokens are opaque, so a typed domain is the only part of a target set the app can read back to you — and it is the only thing on the targets screen that is words rather than a count.
+
+> **Superseded in part by [ADR 0006](./0006-web-targets-block-by-filter-not-by-shield.md).** Typed domains survive; the mechanism assumed here does not. A typed domain cannot be shielded at all — it is applied through `webContent.blockedByFilter` instead, so a blocked website shows Apple's own page rather than the countdown in the dark, and the "Shielded" row above is app-only. The targets step also gains one web-specific line. Everything else on this page stands.
 
 ## Two amendments to what was prototyped
 
