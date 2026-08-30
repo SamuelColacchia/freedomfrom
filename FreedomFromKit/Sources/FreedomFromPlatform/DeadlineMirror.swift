@@ -54,7 +54,10 @@ public struct DeadlineMirror: Sendable {
         return Date(timeIntervalSince1970: seconds)
     }
 
-    public func clear() {
+    /// Named for the file rather than for the act: the glossary reserves
+    /// "clear" for a clean slate, which erases what you authored and touches no
+    /// deadline at all.
+    public func remove() {
         guard let url else { return }
         try? FileManager.default.removeItem(at: url)
     }

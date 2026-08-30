@@ -70,7 +70,7 @@ enum Enforcement {
     static func releaseEverything() {
         // Before the store, because a mirror outliving its commitment would
         // have ShieldConfig draw a countdown for something already released.
-        DeadlineMirror().clear()
+        DeadlineMirror().remove()
 
         let store = store
         store.shield.applications = nil
