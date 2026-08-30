@@ -33,9 +33,7 @@ final class HoldToConfirmUITests: XCTestCase {
     /// proof: the Screen Time prompt is raised by the app, only ever from an
     /// action, and there is no path to it from a hold that never fired.
     func testTheCommitHoldFires() throws {
-        let app = XCUIApplication()
-        app.launch()
-        declineAnyAuthorizationPrompt(timeout: 2)
+        let app = try launchOnTargets()
 
         try reachCommitScreen(in: app)
         XCTAssertFalse(
@@ -62,9 +60,7 @@ final class HoldToConfirmUITests: XCTestCase {
     ///
     /// The screen preselects fifteen minutes, whose hold is 1.5s.
     func testAHoldReleasedTheMomentItFillsStillFires() throws {
-        let app = XCUIApplication()
-        app.launch()
-        declineAnyAuthorizationPrompt(timeout: 2)
+        let app = try launchOnTargets()
 
         try reachCommitScreen(in: app)
         XCTAssertFalse(authorizationPrompt.exists)
@@ -84,9 +80,7 @@ final class HoldToConfirmUITests: XCTestCase {
     /// Releasing early does nothing, which is the other half of the contract:
     /// the hold has to be a hold, not a tap with a slow animation in front of it.
     func testAReleasedHoldDoesNothing() throws {
-        let app = XCUIApplication()
-        app.launch()
-        declineAnyAuthorizationPrompt(timeout: 2)
+        let app = try launchOnTargets()
 
         try reachCommitScreen(in: app)
 
@@ -107,25 +101,11 @@ final class HoldToConfirmUITests: XCTestCase {
         return hold
     }
 
-    /// First run if it is showing, then a domain, then Next. Written to tolerate
-    /// a simulator whose Keychain already holds a record, because the record
-    /// survives the app being deleted by design and no test can clear it.
+    /// Targets, then a domain, then Next. `AppDriving` handles the launch and
+    /// first run; what is left here is the one thing this file needs that the
+    /// Targets tests do not — getting past Next with something to commit to.
     private func reachCommitScreen(in app: XCUIApplication) throws {
-        let begin = app.buttons["Begin"]
-        if begin.waitForExistence(timeout: 3) {
-            begin.tap()
-            declineAnyAuthorizationPrompt(timeout: 8)
-        }
-
         let next = app.buttons["Next"]
-        guard next.waitForExistence(timeout: 5) else {
-            throw XCTSkip(
-                """
-                Not on Targets, so this simulator is mid-commitment or in a state \
-                no test can reset. Screen was:
-                \(app.debugDescription)
-                """)
-        }
 
         // A domain typed by the earlier test in this run is still in the draft,
         // so Next is already live and the keyboard never has to appear.
@@ -139,45 +119,5 @@ final class HoldToConfirmUITests: XCTestCase {
         XCTAssertTrue(
             next.isEnabled, "Next stayed disabled after a domain.\n\(app.debugDescription)")
         next.tap()
-    }
-
-    /// Taps the field until the keyboard actually has it. The first tap after a
-    /// launch lands before the field is ready often enough to fail a run alone.
-    private func type(_ text: String, intoFieldOf app: XCUIApplication) throws {
-        let field = app.textFields.firstMatch
-        guard field.waitForExistence(timeout: 5) else {
-            throw XCTSkip("No domain field on Targets.\n\(app.debugDescription)")
-        }
-
-        for _ in 0..<4 {
-            field.tap()
-            if app.keyboards.firstMatch.waitForExistence(timeout: 2) {
-                field.typeText(text)
-                return
-            }
-        }
-        XCTFail("The domain field never took keyboard focus.\n\(app.debugDescription)")
-    }
-
-    // MARK: - The prompt
-
-    private var authorizationPrompt: XCUIElement {
-        XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
-    }
-
-    /// Declined rather than granted, deliberately. Granting would let the next
-    /// hold commit for real, and a simulator holding a commitment sends every
-    /// later run to the Countdown, where there is no hold to press.
-    private func declineAnyAuthorizationPrompt(timeout: TimeInterval) {
-        let alert = authorizationPrompt
-        guard alert.waitForExistence(timeout: timeout) else { return }
-
-        let buttons = alert.buttons.allElementsBoundByIndex
-        let refusal = buttons.first {
-            let label = $0.label.lowercased()
-            return label.contains("don't") || label.contains("not now")
-                || label.contains("cancel")
-        }
-        (refusal ?? buttons.last)?.tap()
     }
 }
