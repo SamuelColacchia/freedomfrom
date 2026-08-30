@@ -116,7 +116,9 @@ Decided by [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-mod
 **Sharpened here: the package has two targets, not one.** [ADR 0009](./adr/0009-a-foundation-only-kit-and-a-hardware-pass-a-human-walks.md) requires `FreedomFromKit` to import no Apple framework, which leaves the `SecItem` calls with nowhere shared to live and would otherwise triplicate them across three signed targets. So:
 
 - **`FreedomFromKit`** — Foundation only. All logic, all types, the record's `Codable` shape and its codec. This is the tested target.
-- **`FreedomFromStore`** — imports `Security` and `FreedomFromKit`. A thin `SecItem` wrapper: read the record, write the record, delete the record. No logic. Not headlessly testable and not tested; its failure mode is hardware check S1.
+- **`FreedomFromPlatform`** — imports `Security`, `os`, and `FreedomFromKit`. Everything that touches an Apple framework and holds no logic: the `SecItem` record store, and the logging contract of §10 expressed as named events rather than a free-form `log(_:)`. Not headlessly testable and not tested; its failure mode is hardware check S1.
+
+> The logger belongs here rather than in each target because the subsystem string and the public-versus-never-logged rule would otherwise be restated three times, in a contract ADR 0009 calls load-bearing. That is also why this target is named for the boundary it sits on rather than for the store alone.
 
 ### 3. The data model
 
@@ -382,7 +384,7 @@ Decided by [ADR 0009](./adr/0009-a-foundation-only-kit-and-a-hardware-pass-a-hum
 1. **Repo scaffolding.** `project.yml`, the three entitlements files, `Package.swift` with both package targets. Nothing that runs yet.
 2. **The walking skeleton** — ADR 0009's work item one, and it is **kept, not thrown away**. The real three targets with their real bundle IDs and entitlements, doing nothing but authorizing, picking, storing to the Keychain, shielding, and letting both extensions read and log. Built and launched for the **simulator first**, so a failure there is a code failure rather than a signing one. Then installed on the device, where it runs checks **E1, S1, S2, S3**. It is also the first thing to exercise the whole headless build-sign-install chain, so it doubles as proof of the workflow and identity decisions.
 3. **`FreedomFromKit`, tests first.** Every case in the Testing Decisions list below, written before its implementation, then made to pass. `scripts/mac test`.
-4. **`FreedomFromStore`** — the `SecItem` wrapper, promoted from whatever the skeleton did by hand.
+4. **`FreedomFromPlatform`** — the `SecItem` wrapper and the logger, promoted from whatever the skeleton did by hand.
 5. **The app**, in line order: First run, Targets, Commit, Countdown, Escape, Ended, History.
 6. **The extensions**, promoted from the skeleton: `Monitor`'s two callbacks, `ShieldConfig`'s countdown, its reconciliation, and its self-shield drop.
 7. **The hardware pass**: the clean run (C1–C9), then the sacrificial run (X1–X6).

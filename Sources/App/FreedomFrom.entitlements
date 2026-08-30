@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Exactly two entitlements per signed target, and no App Group: nothing
+	     reads one, and an entitlement with no reader still has to exist on the
+	     App ID, be present in the profile, and survive signing (ADR 0002). -->
+	<key>com.apple.developer.family-controls</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.samuelcolacchia.freedomfrom</string>
+	</array>
+</dict>
+</plist>

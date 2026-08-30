@@ -1,0 +1,116 @@
+# The project's source of truth. `xcodegen generate` rebuilds FreedomFrom.xcodeproj
+# from this on every sync, so the generated project is gitignored and anything
+# edited in Xcode's GUI is ephemeral (ADR 0004 of the research, ADR 0010).
+#
+# Topology is fixed by ADR 0002: three signed targets and one local package.
+# There is deliberately no App Group and no ShieldAction extension.
+
+name: FreedomFrom
+
+options:
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+packages:
+  FreedomFromKit:
+    path: FreedomFromKit
+
+settings:
+  base:
+    # Every signed target, per ADR 0002.
+    DEVELOPMENT_TEAM: 6989TSP54U
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1,2"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_VERSION: "6.0"
+    GENERATE_INFOPLIST_FILE: NO
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  FreedomFrom:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/App
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom
+        PRODUCT_NAME: FreedomFrom
+        INFOPLIST_FILE: Sources/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/App/FreedomFrom.entitlements
+    dependencies:
+      - package: FreedomFromKit
+        product: FreedomFromKit
+      - package: FreedomFromKit
+        product: FreedomFromPlatform
+      - target: Monitor
+        embed: true
+      - target: ShieldConfig
+        embed: true
+
+  # Wakes at a window boundary and reconciles against the absolute deadline.
+  # It is not what blocks: ManagedSettings holds the shield by itself, and
+  # DeviceActivity exists only to release on time (ADR 0004).
+  Monitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/Monitor
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom.monitor
+        PRODUCT_NAME: Monitor
+        INFOPLIST_FILE: Sources/Monitor/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/Monitor/Monitor.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - package: FreedomFromKit
+        product: FreedomFromKit
+      - package: FreedomFromKit
+        product: FreedomFromPlatform
+
+  # Draws the countdown in the dark, and is load-bearing twice over: it is the
+  # reconciliation point that fires at the moment of harm (ADR 0004) and the
+  # only process that can recognise freedomfrom's own token (ADR 0005).
+  ShieldConfig:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/ShieldConfig
+        excludes: ["Info.plist", "*.entitlements"]
+      - path: Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom.shieldconfig
+        PRODUCT_NAME: ShieldConfig
+        INFOPLIST_FILE: Sources/ShieldConfig/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/ShieldConfig/ShieldConfig.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - package: FreedomFromKit
+        product: FreedomFromKit
+      - package: FreedomFromKit
+        product: FreedomFromPlatform
+
+# Declared rather than inferred: scripts/mac drives xcodebuild with -scheme.
+schemes:
+  FreedomFrom:
+    build:
+      targets:
+        FreedomFrom: all
+        Monitor: all
+        ShieldConfig: all
+    run:
+      config: Debug
+    archive:
+      config: Release
