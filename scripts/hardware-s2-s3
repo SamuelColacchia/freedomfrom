@@ -239,6 +239,50 @@ log show --archive "$ARCHIVE" \\
 EOF
 }
 
+# deadline_epoch HH:MM turns a wall-clock time into an epoch second, rolling to
+# tomorrow only when today's would be more than twelve hours past — a run
+# started at 23:50 for a 00:05 deadline is the case that needs it.
+#
+# The shape is checked before date(1) sees it, because date(1) is not a
+# validator: `date -d "today 14m"` succeeds and silently means something else
+# entirely, and `14m` is the literal answer the first run of this wizard was
+# given where it asked for a clock time.
+deadline_epoch() {
+  local at now
+  [[ "$1" =~ ^([01][0-9]|2[0-3]|[0-9]):[0-5][0-9](:[0-5][0-9])?$ ]] || return 1
+  at=$(date -d "today $1" +%s 2>/dev/null) || return 1
+  [[ -n "$at" ]] || return 1
+  now=$(date +%s)
+  (( at < now - 43200 )) && at=$(( at + 86400 ))
+  printf '%s' "$at"
+}
+
+# wait_until EPOCH holds the human here until the deadline has actually passed.
+#
+# Opening the target early is the one mistake that makes S2 unanswerable, and it
+# looks like nothing at the time: the shield still draws, just with a countdown
+# on it. The first attempt at S2 was lost to exactly this, so the wait is the
+# wizard's to hold rather than the human's to judge.
+wait_until() {
+  local at="$1" now left
+  while :; do
+    now=$(date +%s)
+    (( now >= at )) && break
+    left=$(( at - now ))
+    # Redrawn in place, and onto a terminal only: _clear takes the same care so
+    # that a piped log stays readable.
+    if [[ -t 1 ]]; then
+      printf '\r  %swaiting %02d:%02d for the deadline…%s\033[K' \
+        "$DIM" $(( left / 60 )) $(( left % 60 )) "$RESET"
+    fi
+    sleep 1
+  done
+  [[ -t 1 ]] && printf '\r\033[K'
+  printf '  %s✓%s the deadline has passed. Open the target now, without dawdling:\n' \
+    "$GREEN" "$RESET"
+  note "the Monitor wakes at the same boundary, and whoever gets there first wins."
+}
+
 # record_result CHECK RESULT EVIDENCE AMENDMENT rewrites one row of the results
 # table in place, found by its check id. Column 2 — what the check decides — is
 # never touched, and re-running overwrites rather than appending, so a repeated
@@ -354,26 +398,70 @@ say "S2 asks whether ShieldConfig can mutate a ManagedSettingsStore inside its"
 say "memory budget. To ask it, the deadline has to pass while nothing else is"
 say "watching, so the extension is the process that discovers it."
 say ""
-step "Open freedomfrom. If it offers 'Begin', take it and grant Screen Time access."
-step "On Targets, tap 'Choose apps' and check exactly ONE app — not freedomfrom."
-note "  Pick something you can open freely. The self-shield is a different check."
-step "Dismiss the picker. The count above should read 1."
-step "Tap 'Next', choose '15 minutes', and hold to commit."
-step "You should land on the countdown."
-say ""
-warn "Now force-quit freedomfrom: swipe up and flick the card away."
-note "The app reconciles on every launch and every foreground. If it is running"
-note "when the deadline passes, it releases the commitment and S2 sees nothing."
-say ""
-step "Do not open freedomfrom again until this wizard says so."
+if confirm "Is a commitment from an earlier run still armed and waiting?"; then
+  say "Then this stage is already done; it only needs its deadline back."
+  say ""
+  warn "Read the deadline off the phone, but check the clocks agree first."
+  note "This wizard runs here, not on the phone, and it turns the time you type"
+  note "into an instant using THIS machine's clock and time zone. If the two"
+  note "disagree, the wait at stage 4 targets the wrong moment and S2 is lost"
+  note "again for a reason that will not show up in the log."
+  note "  here, it is now $(date '+%H:%M:%S %Z')"
+  say ""
 
-ask S2_DEADLINE "What wall-clock time does the commitment end? (e.g. 14:35)"
-write_env S2_DEADLINE "$S2_DEADLINE"
-pause "Committed and force-quit?"
+  # A stored answer that is not a clock time must not come back as a default:
+  # the first run of this wizard was answered `14m`, and it is still in the file.
+  if stale=$(_existing S2_DEADLINE) && [[ -n "$stale" ]] &&
+    ! deadline_epoch "$stale" >/dev/null 2>&1; then
+    note "discarding the stored answer '$stale', which is not a clock time"
+    write_env S2_DEADLINE ""
+  fi
+
+  S2_DEADLINE_AT=""
+  while :; do
+    ask S2_DEADLINE "What wall-clock time does it end? (24h, e.g. 14:35)"
+    if S2_DEADLINE_AT=$(deadline_epoch "$S2_DEADLINE"); then
+      write_env S2_DEADLINE "$S2_DEADLINE"
+      note "reading that as $(date -d "@$S2_DEADLINE_AT" '+%F %H:%M:%S %Z')"
+      break
+    fi
+    S2_DEADLINE_AT=""
+    warn "'$S2_DEADLINE' is not a clock time. Answer like 14:35."
+    confirm "Skip the check and judge the wait yourself?" && break
+  done
+else
+  step "Open freedomfrom. If it offers 'Begin', take it and grant Screen Time access."
+  step "On Targets, tap 'Choose apps' and check exactly ONE app — not freedomfrom."
+  note "  Pick something you can open freely. The self-shield is a different check."
+  step "Dismiss the picker. The count above should read 1."
+  step "Tap 'Next', choose '15 minutes', and hold to commit."
+  step "You should land on the countdown."
+  say ""
+  pause "Press Enter the moment the countdown appears."
+
+  # Stamped rather than typed, because a typed time is a thing that can be
+  # wrong: the first run of this wizard was answered `14m` and the wait at
+  # stage 4 had nothing to hold. Stamped here rather than after the force-quit
+  # below, because the app anchors its deadline when the hold completes, and
+  # every second of drift past that is a second handed to the Monitor in the
+  # race at stage 4.
+  S2_DEADLINE_AT=$(( $(date +%s) + 15 * 60 ))
+  S2_DEADLINE=$(date -d "@$S2_DEADLINE_AT" '+%H:%M:%S' 2>/dev/null || printf 'in 15 minutes')
+  write_env S2_DEADLINE "$S2_DEADLINE"
+  note "Deadline stamped at $S2_DEADLINE, a second or so after the app's own."
+  say ""
+  warn "Now force-quit freedomfrom: swipe up and flick the card away."
+  note "The app reconciles on every launch and every foreground. If it is running"
+  note "when the deadline passes, it releases the commitment and S2 sees nothing."
+  say ""
+  step "Do not open freedomfrom again until this wizard says so."
+  pause "Force-quit?"
+fi
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "S2, part two: open the shielded app at the deadline"
-say "Wait out the fifteen minutes. Keep the phone unlocked and idle, or locked."
+say "The wizard holds the wait, so leave the phone alone until it says otherwise."
+say "Unlocked and idle, or locked — either is fine. Just do not open freedomfrom."
 say ""
 warn "There is a race here, and it decides whether the run counts."
 note "The Monitor also wakes at the window boundary and also releases. If it gets"
@@ -382,7 +470,13 @@ note "proves nothing about S2. Opening the target promptly is what wins the race
 note "the log below says which process actually got there, so a lost race is"
 note "recorded as inconclusive and re-run rather than written down as a result."
 say ""
-step "At $S2_DEADLINE, open the app you shielded."
+if [[ -n "${S2_DEADLINE_AT:-}" ]]; then
+  wait_until "$S2_DEADLINE_AT"
+else
+  pause "Press Enter once $S2_DEADLINE has passed."
+fi
+say ""
+step "Now open the app you shielded."
 step "Look at what you get, then press the Home gesture and open it a second time."
 
 say ""
@@ -428,9 +522,10 @@ then
   printf '  %s✓%s %s line(s) → docs/evidence/s2-s3.log\n' "$GREEN" "$RESET" "$lines"
   if [[ "$lines" -eq 0 ]]; then
     warn "The archive holds no lines from this subsystem."
-    note "--info --debug are not optional: everything the logging contract emits is"
-    note "info level and log show drops it silently without them. They are in the"
-    note "command above, so an empty result means the window missed the run."
+    note "The contract logs at notice, which persists to the on-disk store, so the"
+    note "level is unlikely to be what emptied this one. Check whether the phone is"
+    note "running an older build that logged at info, or whether --last 45m reached"
+    note "back far enough to cover the commit."
   fi
 else
   warn "could not read the archive. Check the path and the chown line above."
@@ -450,12 +545,30 @@ sc_woke=no;     grep -q "woke reason=shielding" <<<"$shieldconfig" && sc_woke=ye
 sc_released=no; grep -q "store mutation release landed=true" <<<"$shieldconfig" && sc_released=yes
 mon_released=no; grep -q "store mutation release landed=true" <<<"$monitor" && mon_released=yes
 
-note "shieldconfig woke:              $sc_woke"
+note "shieldconfig woke:               $sc_woke"
 note "shieldconfig logged the release: $sc_released"
 note "monitor logged the release:      $mon_released"
+note "what you saw on the first open:  $S2_FIRST"
 say ""
 
-if [[ "$sc_woke" == no && "$mon_released" == yes ]]; then
+# The screen is checked before the log, because on this one answer it is the
+# stronger evidence. `ShieldConfig` draws a countdown only from a deadline that
+# `Reconciliation.shouldRelease` says has not passed, so a countdown is proof
+# the gate was never reached — whatever the archive did or did not hold. Read
+# the other way round, an empty archive gets blamed for a run that was simply
+# opened too early, which is what happened the first time S2 was walked.
+if [[ "$S2_FIRST" == a ]]; then
+  warn "INCONCLUSIVE — the deadline had not passed when you opened the target."
+  say "The countdown on that shield is the tell: ShieldConfig draws one only"
+  say "while the commitment is still running, and returns nothing once it has"
+  say "released. So the mutation under test was never attempted."
+  say ""
+  say "Re-run, and answer yes when stage 3 asks if a commitment is still armed:"
+  note "  the one you made is still live, and the wizard will hold the wait for you."
+  record_result S2 "Inconclusive, re-run" \
+    "The target was opened before the deadline — \`ShieldConfig\` drew a live countdown, which it does only while \`shouldRelease\` is false" \
+    "None — not a result"
+elif [[ "$sc_woke" == no && "$mon_released" == yes ]]; then
   warn "INCONCLUSIVE — the Monitor won the race and released before the shield drew."
   say "This says nothing about S2. Re-run from stage 3, and open the target sooner."
   record_result S2 "Inconclusive, re-run" \
@@ -463,7 +576,11 @@ if [[ "$sc_woke" == no && "$mon_released" == yes ]]; then
     "None — not a result"
 elif [[ "$sc_woke" == no ]]; then
   warn "INCONCLUSIVE — ShieldConfig left no trace at all."
-  say "Either the shield never drew, or the capture window missed it. Re-run from stage 3."
+  say "The shield did not draw, or the capture window missed it. Re-run from stage 3."
+  note "The logging contract is at notice level and persists to the on-disk store,"
+  note "so the level is no longer the likeliest explanation for an empty archive."
+  note "Check the build on the phone is current — an older one logs at info, which"
+  note "may not survive the gap between the run and the collect."
   record_result S2 "Inconclusive, re-run" \
     "No \`shieldconfig\` lines in the archive" \
     "None — not a result"

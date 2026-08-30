@@ -6,8 +6,8 @@ import os
 ///
 /// A wordless app returns no other signal, so this is load-bearing rather than
 /// debug scaffolding, and it is **permanent in release builds** (ADR 0009).
-/// Two rules hold it up, and the reason there is no free-form `log(_:)` here is
-/// that both would otherwise rest on every caller remembering them:
+/// Three rules hold it up, and the reason there is no free-form `log(_:)` here
+/// is that all of them would otherwise rest on every caller remembering them:
 ///
 /// - **Structural facts are `%{public}`.** Default `os_log` redaction prints
 ///   `<private>` for every interpolated value, and a coverage count of 2-of-3
@@ -15,6 +15,15 @@ import os
 /// - **Target identities are never logged at all.** No bundle identifiers, no
 ///   tokens, no domain strings. Nothing on the hardware checklist needs to know
 ///   *which* app was shielded, only how many resolved.
+/// - **Nothing here is below `notice`.** Apple documents info-level messages as
+///   living in a memory buffer and being "purged as memory buffers fill" unless
+///   the subsystem's configuration is changed, which on iOS needs an
+///   Apple-signed profile. Notice and error go to the on-disk store instead. A
+///   hardware run reads its evidence out of a `log collect` archive taken up to
+///   an hour after the event it is about, and a `.info` line has no guarantee
+///   of surviving that wait — which is the best available explanation for the
+///   first attempt at check S2 yielding an archive with no lines from this
+///   subsystem at all. Evidence that might not be there is not evidence.
 public struct Log: Sendable {
     public static let subsystem = "com.samuelcolacchia.freedomfrom"
 
@@ -35,7 +44,7 @@ public struct Log: Sendable {
     // MARK: - The record
 
     public func recordRead(found: Bool, hasActiveCommitment: Bool) {
-        logger.info(
+        logger.notice(
             "record read found=\(found, privacy: .public) active=\(hasActiveCommitment, privacy: .public)"
         )
     }
@@ -47,7 +56,7 @@ public struct Log: Sendable {
     }
 
     public func recordWritten() {
-        logger.info("record written")
+        logger.notice("record written")
     }
 
     public func recordWriteFailed(status: Int32) {
@@ -60,17 +69,17 @@ public struct Log: Sendable {
     /// There is no read-back of effective state, so "landed" means the call
     /// completed, never that the setting governs the device (ADR 0005).
     public func storeMutation(_ what: String, landed: Bool) {
-        logger.info("store mutation \(what, privacy: .public) landed=\(landed, privacy: .public)")
+        logger.notice("store mutation \(what, privacy: .public) landed=\(landed, privacy: .public)")
     }
 
     public func coverage(_ coverage: Coverage) {
-        logger.info(
+        logger.notice(
             "coverage resolved=\(coverage.resolved, privacy: .public) of named=\(coverage.named, privacy: .public)"
         )
     }
 
     public func deadline(_ deadline: Date) {
-        logger.info("deadline \(Self.stamp(deadline), privacy: .public)")
+        logger.notice("deadline \(Self.stamp(deadline), privacy: .public)")
     }
 
     public func marked(_ mark: Mark) {
@@ -85,7 +94,7 @@ public struct Log: Sendable {
     // MARK: - The watchdog
 
     public func windowRegistered(_ window: MonitoringWindow) {
-        logger.info(
+        logger.notice(
             """
             window registered kind=\(window.kind.rawValue, privacy: .public) \
             start=\(Self.stamp(window.start), privacy: .public) \
@@ -106,11 +115,11 @@ public struct Log: Sendable {
     // MARK: - Lifecycle
 
     public func woke(_ reason: String) {
-        logger.info("woke reason=\(reason, privacy: .public)")
+        logger.notice("woke reason=\(reason, privacy: .public)")
     }
 
     public func authorization(_ state: String) {
-        logger.info("authorization state=\(state, privacy: .public)")
+        logger.notice("authorization state=\(state, privacy: .public)")
     }
 
     private static func stamp(_ date: Date) -> String {

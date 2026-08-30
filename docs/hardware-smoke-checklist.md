@@ -44,7 +44,34 @@ log show --archive ./evidence/device.logarchive \
   --info --debug --style compact
 ```
 
-**`--info --debug` is not optional.** Everything the logging contract emits is info level, and `log show` drops it silently without them. `scripts/mac` was missing both flags and made the simulator look like an app that logs nothing.
+> **Rewritten again by the first attempt at S2**, which produced an archive
+> holding **zero** lines from this subsystem while the app and its extensions
+> were demonstrably running. The cause was not the capture. It was the level.
+
+**A line below `notice` is a line the archive might not hold.** Apple documents
+info-level messages as living in a memory buffer and being ["purged as memory
+buffers fill"](https://developer.apple.com/documentation/os/oslogtype/info)
+unless the subsystem's configuration is changed — which on iOS takes an
+Apple-signed profile, so it is not available here. Notice, error and fault go to
+the on-disk store instead. `log collect` can still catch info-level lines
+generated shortly before it runs, which is why the simulator never showed this;
+a run collects its archive up to an hour after the event it is about, and over
+that gap a `.info` line is a coin toss. Anything the checklist cites therefore
+has to be at `notice` or above. The whole logging contract now is, and `Log`
+carries that as its third rule so it cannot quietly drift back.
+
+**This is the best explanation for the empty S2 archive, not a proven one.** It
+was not tested against a device before the contract was changed, because the
+change is cheap and the next phone session is not. If S2's re-run comes back
+with an archive that is still empty, the level was not the cause and this
+paragraph is what needs revisiting.
+
+**`--info --debug` are kept on every `log show` here, and they are not the fix.**
+They select which of the messages an archive *already holds* get printed, so they
+are the difference between seeing a `.info` line and not seeing one — which is
+why `scripts/mac` was wrong to omit them against the simulator, where the memory
+buffer is right there. They cannot recover a message that was never written to
+the store, and on a device collected after the fact, that is every `.info` line.
 
 One capture at the end of each commitment run, not one per check.
 
