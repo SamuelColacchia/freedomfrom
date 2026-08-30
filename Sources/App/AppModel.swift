@@ -126,6 +126,14 @@ final class AppModel {
         case .idle(let record), .released(let record):
             self.record = record
             coverage = Coverage(resolved: 0, named: 0)
+            // The draft's apps are a count on Targets and a set of checkmarks
+            // in the picker, and the picker reads this property. Without the
+            // decode it opens empty on every launch, and dismissing it writes
+            // that emptiness back over the draft — so the one screen ADR 0008
+            // says arrives holding what you left in it would quietly erase it.
+            // This is the app's half of hardware check S3; the platform's half
+            // is whether the decoded selection arrives checked.
+            selection = TargetHandles.decode(record.draft.encodedSelection) ?? selection
         case .running(let record, let coverage):
             self.record = record
             self.coverage = coverage

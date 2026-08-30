@@ -38,11 +38,26 @@ the password — printing them is what keeps it out of the agent's session.
 The full reasoning, and the measurements behind it, are in
 `docs/adr/0010-the-mac-is-a-mirror-and-a-simulator.md`.
 
+## The hardware pass
+
+`docs/hardware-smoke-checklist.md` is walked by a person on a cabled phone, and
+no agent can close it: the picker's tokens exist only once somebody has tapped
+them, several checks are somebody looking at a screen, and `log collect` is
+root-gated on the Mac. **Do not fill in a results row you did not observe.** A
+fabricated row is worse than an empty one, because every claim the app makes is
+reconciled against that table before TestFlight.
+
+`scripts/hardware-s2-s3` is the wizard for the two gates on the walking
+skeleton. It does the install, the log reads, the verdicts, the results table,
+and the bound amendment; the human supplies the taps and the one `sudo` line it
+prints rather than runs. Other phases have no wizard yet, and one built the same
+way is the right way to add them.
+
 ## Agent skills
 
 ### Issue tracker
 
-Issues and PRDs live in this repo's GitHub Issues, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in this repo's GitHub Issues, via the `gh` CLI. **Every issue gets a milestone at creation time** — currently `v1`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

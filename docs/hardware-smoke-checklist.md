@@ -65,6 +65,8 @@ Launch the skeleton, let it log one line, capture, and filter.
 
 Build and launch for the **Simulator first**. It needs no signing, so a failure there is a code failure rather than a signing one. Then install on the device.
 
+**S2 and S3 have a wizard: `scripts/hardware-s2-s3`.** It installs the hardware-pass build, walks the taps in order, reads the archive back, decides each verdict from the log and your answer together, fills in the two rows below, and applies the bound amendment if one fires. It cannot tap the phone and it does not know the Mac's password, so those stay yours; everything either side of them is done for you. A verdict it cannot support from the log is recorded as inconclusive and re-run rather than written down.
+
 **S1. Can an extension read the Keychain access group? (gate)**
 Grant authorization, pick one app, commit a short window so a record is written. Open the shielded app to wake `ShieldConfig`, and let the monitor wake at a window boundary.
 **Green**: `monitor` and `shieldconfig` categories both log a successful record read with the deadline they found.

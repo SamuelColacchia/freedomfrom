@@ -10,3 +10,6 @@
 .build/
 DerivedData/
 *.xcarchive
+
+# Dropped here by wrangler every time a pr-walkthrough is published
+.wrangler/
