@@ -14,6 +14,7 @@ there; this Linux box holds the repo and drives the agent skills.
 ```
 scripts/mac build          # compile for the simulator. ~1.7s warm. No signing, no human.
 scripts/mac test           # swift test on FreedomFromKit, against Darwin Foundation
+scripts/mac uitest         # drive the app on the simulator. The only verb that presses anything
 scripts/mac run [secs]     # build, launch on the simulator, print the app's own log lines
 scripts/mac shot [file]    # capture what the simulator is showing right now
 scripts/mac log [mins]     # re-read those log lines without rebuilding
@@ -28,6 +29,17 @@ step to forget and nothing on the Mac is ever edited or committed from.
 
 Failures come back as `file:line:col` with the message, through `xcbeautify`,
 with the exit code preserved. If the summary is not enough, `scripts/mac rawlog`.
+
+`scripts/mac uitest` is the only thing in the loop that touches the app the way
+a person does. `build` proves it compiles and `test` proves the kit's logic;
+neither presses anything, which is how two broken hold-to-confirm fixes shipped
+green. Use it for anything a user does with a finger.
+
+It has a hard limit worth knowing before you trust it: **a synthesised press is
+perfectly still.** Gesture bugs that need a real thumb — drift, jitter, a
+recogniser that fails only under actual input — pass here and fail on the phone.
+FB15711941 is one of those. A green `uitest` means the wiring is right, not that
+the gesture survives a hand.
 
 `scripts/mac device` is the one verb that needs a person: the phone has to be
 cabled, and the login keychain has to be unlocked inside a shared SSH session.
