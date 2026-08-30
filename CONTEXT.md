@@ -48,6 +48,10 @@ _Avoid_: permission, consent, entitlement
 Reapplying the shield and restrictions to a commitment that is still running but has lost them — after the user revoked authorization, or deleted and reinstalled the app.
 _Avoid_: restore, resume, reactivate
 
+**Release**:
+The app lifting a commitment's shield and restrictions because its deadline has passed. The counterpart to a break, which happens before the deadline. A release can arrive late — after the deadline, whenever something next runs to notice — but never early.
+_Avoid_: unlock, unblock, expire, end
+
 ### Getting out
 
 **Escape route**:
