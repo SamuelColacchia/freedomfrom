@@ -125,6 +125,8 @@ With a commitment whose deadline has already passed, open a shielded app so `Shi
 **Green**: `shieldconfig` logs the mutation landing, and the shield is gone on the next open. No jetsam.
 **Red → amendment**: ADR 0004's third reconciliation point is replaced by its deferred local notification, and ADR 0005's self-shield fix is dropped — a user who shields freedomfrom keeps it shielded. Both ADRs are amended together; they rest on the same premise.
 
+> **Seeing no shield at all on that first open is what passing looks like, and it reads like failing.** It cost this check one wrongly-scored run and it will mislead the next reader too, so: iOS launches a shield-configuration extension *only while the shield is still up*. A `woke reason=shielding application` line is therefore proof the target was blocked at the moment of the tap, whatever the person saw a fraction of a second later. On the green run the release landed 32ms into that same call, before anything was presented. The reading to refuse is "the app opened normally, so the extension never ran" — an extension that never ran leaves an archive with no `shieldconfig` lines in it, which is a different observation and scores inconclusive.
+
 **S3. Does a selection decoded from the Keychain hand back to the picker with its apps checked?**
 Store a selection, kill the app, relaunch, open the picker.
 **Green**: previously chosen apps appear checked.
@@ -210,7 +212,7 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 |---|---|---|---|---|
 | E1 | The evidence channel works | **Blocked** | `devicectl device sysdiagnose` fails opaquely; `log collect` needs root | Evidence section rewritten above; per-capture human step accepted |
 | S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
-| S2 | `ShieldConfig` can mutate the store (gate) | **Green** | `shieldconfig` logs `store mutation release landed=true`; shield gone on the next open, no jetsam. The final window was suppressed and `monitor` logged nothing, so the extension was the only process that could have taken it | None |
+| S2 | `ShieldConfig` can mutate the store (gate) | **Green** | `shieldconfig` logs `store mutation release landed=true`, and logged again after it, so no jetsam. **The shield being gone on the next open is the human's answer, not a log line** — the archive corroborates it only by holding no further `shieldconfig` wake, which is absence of evidence. The final window was suppressed and `monitor` logged nothing, so the extension was the only process that could have taken it | None |
 | S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
 | C1 | Consent sentence and prompt appear | | | |
 | C2 | The shield applies | | | |

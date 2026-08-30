@@ -656,7 +656,10 @@ elif [[ "$sc_released" == yes && "$S2_CLEARED" == yes ]]; then
     say "so its running is the proof the target was blocked when you tapped it;"
     say "the release landed inside the same call, before anything was presented."
   fi
-  detail="\`shieldconfig\` logs \`store mutation release landed=true\`; shield gone on the next open, no jetsam"
+  # Split by source deliberately. Half of the green condition is a log line and
+  # half is somebody looking at a screen, and a row that reads as though the
+  # archive carried both is the fabricated row AGENTS.md rules out.
+  detail="\`shieldconfig\` logs \`store mutation release landed=true\`, and logged again after it, so no jetsam. **The shield being gone on the next open is the human's answer, not a log line** — the archive corroborates it only by holding no further \`shieldconfig\` wake, which is absence of evidence"
   # The suppression is what makes the release attributable. With the final window
   # armed, the Monitor releases the same commitment and nothing here is a result.
   [[ "$mon_disarmed" == yes ]] &&
