@@ -204,6 +204,14 @@ MAC_ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"
 DEVICE="${FREEDOMFROM_DEVICE:-7EE3550E-8A48-5192-B729-961CB3FD51E9}"
 SIGN_SOCKET="${FREEDOMFROM_SIGN_SOCKET:-$HOME/.ssh/cm/mac-sign}"
 
+# The phone answers to two identifiers and they are not interchangeable.
+# `devicectl --device` takes the CoreDevice UUID above; `log collect
+# --device-udid` takes the ECID-derived hardware UDID, and handed the other one
+# it fails with "Device not configured (6)" against a phone that is cabled,
+# paired and unlocked. Resolved from the device in preflight rather than written
+# down, so a second phone needs no edit here.
+DEVICE_UDID="${FREEDOMFROM_DEVICE_UDID:-}"
+
 SUBSYSTEM=com.samuelcolacchia.freedomfrom
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECKLIST="$REPO/docs/hardware-smoke-checklist.md"
@@ -367,6 +375,28 @@ else
   exit 1
 fi
 
+if [[ -z "$DEVICE_UDID" ]]; then
+  DEVICE_UDID=$(
+    remote_sh <<EOF 2>/dev/null || true
+xcrun devicectl device info details --device $DEVICE \\
+  --json-output /tmp/freedomfrom-device.json >/dev/null 2>&1 &&
+  plutil -extract result.hardwareProperties.udid raw -o - /tmp/freedomfrom-device.json
+EOF
+  )
+  DEVICE_UDID="${DEVICE_UDID//[[:space:]]/}"
+fi
+
+if [[ -n "$DEVICE_UDID" ]]; then
+  printf '  %s✓%s its hardware UDID is %s\n' "$GREEN" "$RESET" "$DEVICE_UDID"
+else
+  warn "could not read the hardware UDID, which the log collect line needs."
+  note "Read it yourself and export it, then re-run:"
+  note "  xcrun devicectl device info details --device $DEVICE --json-output /tmp/d.json"
+  note "  plutil -extract result.hardwareProperties.udid raw -o - /tmp/d.json"
+  note "  export FREEDOMFROM_DEVICE_UDID=<the 00008120-… value>"
+  exit 1
+fi
+
 pause "Ready?"
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
@@ -504,7 +534,7 @@ warn "and the password does not enter this session."
 say ""
 note "  ssh $HOST"
 note "  mkdir -p ~/$MAC_EVIDENCE"
-note "  sudo log collect --device-udid $DEVICE --last 45m \\"
+note "  sudo log collect --device-udid $DEVICE_UDID --last 45m \\"
 note "    --output ~/$MAC_EVIDENCE/s2-s3.logarchive"
 note "  sudo chown -R \"\$(whoami)\" ~/$MAC_EVIDENCE/s2-s3.logarchive"
 say ""
@@ -595,12 +625,18 @@ elif [[ "$mon_released" == yes && "$sc_released" == no ]]; then
   record_result S2 "Inconclusive, re-run" \
     "\`monitor\` logged the release at the window boundary; \`ShieldConfig\` never reached its release path" \
     "None — not a result"
-elif [[ "$S2_FIRST" == c ]]; then
-  warn "INCONCLUSIVE — no shield was drawn, so ShieldConfig never ran for that open."
-  say "An app that opens normally is an app with no shield on it. Enforcement was"
-  say "already gone, or was never applied, and either way the gate was not reached."
+elif [[ "$S2_FIRST" == c && "$sc_released" == no ]]; then
+  # Only when the log agrees. An app that opens normally is *usually* an app with
+  # no shield on it — but it is also what a fast pass looks like from the seat of
+  # the person tapping, because the release lands inside the call that was asked
+  # to draw the shield. Scoring on the answer alone read the first green run as
+  # inconclusive. The log decides; the answer only breaks a tie it cannot.
+  warn "INCONCLUSIVE — no shield was drawn, and ShieldConfig logged no release."
+  say "An app that opens normally with nothing in the archive is an app with no"
+  say "shield on it. Enforcement was already gone, or was never applied, and"
+  say "either way the gate was not reached."
   record_result S2 "Inconclusive, re-run" \
-    "The target opened with no shield, so \`ShieldConfig\` was never invoked for it" \
+    "The target opened with no shield and \`shieldconfig\` logged no release, so it was never invoked for it" \
     "None — not a result"
 elif [[ "$sc_woke" == no ]]; then
   warn "INCONCLUSIVE — ShieldConfig left no trace at all."
@@ -614,9 +650,21 @@ elif [[ "$sc_woke" == no ]]; then
     "None — not a result"
 elif [[ "$sc_released" == yes && "$S2_CLEARED" == yes ]]; then
   printf '  %s✓ GREEN%s — the extension mutated the store and the shield came down.\n' "$GREEN" "$RESET"
-  record_result S2 "**Green**" \
-    "\`shieldconfig\` logs \`store mutation release landed=true\`; shield gone on the next open, no jetsam" \
-    "None"
+  if [[ "$S2_FIRST" == c ]]; then
+    say "You saw no shield at all, which is this passing rather than this not"
+    say "happening. iOS launches ShieldConfig only while the shield is still up,"
+    say "so its running is the proof the target was blocked when you tapped it;"
+    say "the release landed inside the same call, before anything was presented."
+  fi
+  # Split by source deliberately. Half of the green condition is a log line and
+  # half is somebody looking at a screen, and a row that reads as though the
+  # archive carried both is the fabricated row AGENTS.md rules out.
+  detail="\`shieldconfig\` logs \`store mutation release landed=true\`, and logged again after it, so no jetsam. **The shield being gone on the next open is the human's answer, not a log line** — the archive corroborates it only by holding no further \`shieldconfig\` wake, which is absence of evidence"
+  # The suppression is what makes the release attributable. With the final window
+  # armed, the Monitor releases the same commitment and nothing here is a result.
+  [[ "$mon_disarmed" == yes ]] &&
+    detail="$detail. The final window was suppressed and \`monitor\` logged nothing, so the extension was the only process that could have taken it"
+  record_result S2 "**Green**" "$detail" "None"
 else
   printf '  %s✗ RED%s — ShieldConfig ran but the mutation did not land.\n' "$RED" "$RESET"
   say "The bound amendment fires. Both ADRs go together: they rest on the same premise."
