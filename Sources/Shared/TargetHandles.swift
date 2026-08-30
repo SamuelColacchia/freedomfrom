@@ -15,14 +15,29 @@ enum TargetHandles {
     /// handle, which is the only signal available that a target no longer
     /// resolves. Whether it fires at all is hardware check X4.
     static func mint(from selection: FamilyActivitySelection) -> [TargetHandle] {
+        (handles(selection.applicationTokens) + handles(selection.categoryTokens))
+            .sorted { $0.value < $1.value }
+    }
+
+    /// The same two sets, counted apart rather than summed.
+    ///
+    /// A whole category arrives as one token with `applicationTokens` empty, so
+    /// the flattened count of `mint` reads as `1 app` on screen for a set that
+    /// shields many. What is enforced is unchanged; only the noun was wrong.
+    static func counts(from selection: FamilyActivitySelection) -> ChosenTargets {
+        ChosenTargets(
+            apps: handles(selection.applicationTokens).count,
+            categories: handles(selection.categoryTokens).count
+        )
+    }
+
+    private static func handles<Token: Encodable & Hashable>(
+        _ tokens: Set<Token>
+    ) -> [TargetHandle] {
         let encoder = JSONEncoder()
-        let apps = selection.applicationTokens.compactMap { token in
+        return tokens.compactMap { token in
             (try? encoder.encode(token)).map { TargetHandle($0.base64EncodedString()) }
         }
-        let categories = selection.categoryTokens.compactMap { token in
-            (try? encoder.encode(token)).map { TargetHandle($0.base64EncodedString()) }
-        }
-        return (apps + categories).sorted { $0.value < $1.value }
     }
 
     static func encode(_ selection: FamilyActivitySelection) -> Data? {
