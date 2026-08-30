@@ -30,7 +30,7 @@ struct TargetsView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Text("\(model.pickedTargetCount)")
+                Text("\(model.chosenTargetCount)")
                     .font(.system(size: 64, weight: .ultraLight))
                     .foregroundStyle(Quiet.ink)
                 Text("chosen")

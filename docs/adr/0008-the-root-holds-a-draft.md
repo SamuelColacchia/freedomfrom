@@ -93,6 +93,13 @@ Two things fall out of it, both improvements this ADR would not have chosen:
 - **The count on Targets stops being able to lie.** It reads what this session
   picked, not what a stale encoding claims.
 
+**One write trigger goes with them.** This ADR said the draft is written when the
+picker sheet returns, when a typed domain is committed with return, and when the
+app backgrounds. The first of those wrote the selection and its count, and now
+has nothing to write, so the list is two: a committed domain, and a backgrounding.
+The sentence it justified is unchanged — a finished domain still always survives
+an interruption, and a half-typed one still never does.
+
 What does not change: the entrance stays untaxed for everything the app can
 actually read back. ADR 0001's rule is unmoved, and the domains a user typed —
 the part of a target set with words — still survive an interruption.

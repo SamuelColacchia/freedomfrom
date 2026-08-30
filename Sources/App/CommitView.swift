@@ -67,7 +67,7 @@ struct CommitView: View {
     }
 
     private var targetWords: String {
-        let apps = model.pickedTargetCount
+        let apps = model.chosenTargetCount
         let sites = model.draft.domains.count
         return [count(apps, "app"), count(sites, "website")]
             .compactMap { $0 }
