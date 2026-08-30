@@ -69,14 +69,14 @@ xcrun simctl install booted "\$R/derived/Build/Products/Debug-iphonesimulator/$S
 xcrun simctl launch booted $BUNDLE
 sleep ${1:-3}
 echo "--- $SUBSYSTEM ---"
-xcrun simctl spawn booted log show --last 2m --style compact \\
+xcrun simctl spawn booted log show --last 2m --style compact --info --debug \\
   --predicate 'subsystem == "$SUBSYSTEM"' 2>/dev/null | tail -n 60
 EOF
 }
 
 cmd_log() {
   remote <<EOF
-xcrun simctl spawn booted log show --last ${1:-5}m --style compact \\
+xcrun simctl spawn booted log show --last ${1:-5}m --style compact --info --debug \\
   --predicate 'subsystem == "$SUBSYSTEM"' 2>/dev/null | tail -n 200
 EOF
 }
