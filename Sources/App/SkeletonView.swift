@@ -36,6 +36,9 @@ struct SkeletonView: View {
                     Button("Commit 15 minutes") {
                         model.commit()
                     }
+                    Button("Commit 1 minute") {
+                        model.commit(minutes: 1)
+                    }
                     Button("Release", role: .destructive) {
                         model.forceReleaseForSkeletonOnly()
                     }

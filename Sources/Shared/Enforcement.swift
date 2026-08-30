@@ -1,6 +1,7 @@
 import DeviceActivity
 import Foundation
 import FreedomFromKit
+import FreedomFromPlatform
 import ManagedSettings
 
 // Compiled into all three signed targets. It exists because these names are the
@@ -35,6 +36,10 @@ enum Enforcement {
     /// that never fires fails in the direction of the block staying up, and
     /// this is the only thing that takes it down (ADR 0004).
     static func releaseEverything() {
+        // Before the store, because a mirror outliving its commitment would
+        // have ShieldConfig draw a countdown for something already released.
+        DeadlineMirror().clear()
+
         let store = store
         store.shield.applications = nil
         store.shield.applicationCategories = nil

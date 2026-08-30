@@ -71,10 +71,14 @@ final class SkeletonModel {
     func requestAuthorization() async {
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+            status = "authorization returned without error"
         } catch {
-            // The OS owns this prompt, so the app re-requests rather than
-            // reporting an error (ADR 0005).
-            status = "authorization refused"
+            // v1 says nothing here: the OS owns the prompt, so the app
+            // re-requests rather than reporting (ADR 0005). The skeleton is a
+            // console, so it shows what the product will swallow — otherwise a
+            // refusal and a silent no-op look identical on screen.
+            status = "auth error: \(error)"
+            log.authorization("error \(String(describing: type(of: error)))")
         }
         await refreshAuthorization()
     }
@@ -126,6 +130,17 @@ final class SkeletonModel {
             Enforcement.releaseEverything()
             status = "record write failed"
             return
+        }
+
+        // ShieldConfig has no Keychain (S1 red), so the deadline reaches it
+        // through the shared container or not at all. Derived, never
+        // authoritative: a failure here costs the shield its countdown and
+        // leaves the commitment untouched.
+        do {
+            try DeadlineMirror().write(deadline)
+            log.storeMutation("deadline mirror", landed: true)
+        } catch {
+            log.storeMutation("deadline mirror", landed: false)
         }
 
         log.deadline(deadline)

@@ -20,20 +20,35 @@ Read this before starting:
 
 The record is a sysdiagnose pulled off the device, read on the Mac. `log stream --device` does not exist on macOS 26.6 and `devicectl` has no log subcommand, so live viewing means Console.app on the Mac and is optional.
 
+> **Rewritten by the first device session.** Both commands below were wrong, and the second one is worse than wrong — it is root-gated, which makes evidence a **per-capture human step** rather than one-time setup. Budget for that.
+
 ```sh
 # Confirm the device is visible
 xcrun devicectl list devices
 
-# Capture (confirm flags against --help; unverified until a device is paired)
-xcrun devicectl device sysdiagnose --device <udid> --output-directory ./evidence
+# DOES NOT WORK on macOS 26.6 / devicectl 518.33. The flag is --destination,
+# not --output-directory, and with it corrected the command still exits 1 with
+# an opaque CoreDeviceCLISupport.DiagnoseError, code 0, empty userInfo, against
+# a device that is connected, unlocked, and accepting every other subcommand.
+# --dry-run-only exits 0 and also writes nothing. Recorded so nobody retries it.
+xcrun devicectl device sysdiagnose --device <udid> --destination ./evidence
+
+# What works instead. `log collect --device-udid` survives on macOS 26.6 —
+# only `log stream --device` was removed — and yields a .logarchive directly,
+# which is far cheaper than a sysdiagnose. It requires root.
+sudo log collect --device-udid <udid> --last 30m --output ./evidence/device.logarchive
 
 # Read, filtered to our subsystem
-log show --archive ./evidence/<bundle>/system_logs.logarchive \
+log show --archive ./evidence/device.logarchive \
   --predicate 'subsystem == "com.samuelcolacchia.freedomfrom"' \
   --info --debug --style compact
 ```
 
-One capture at the end of each commitment run, not one per check. A sysdiagnose is hundreds of megabytes and takes minutes.
+**`--info --debug` is not optional.** Everything the logging contract emits is info level, and `log show` drops it silently without them. `scripts/mac` was missing both flags and made the simulator look like an app that logs nothing.
+
+One capture at the end of each commitment run, not one per check.
+
+**When the log is unreachable, make the surface under test report on itself.** With E1 blocked, S1 was still settled on-device by having `ShieldConfig` state its own condition in the shield it draws. That is not the app-mediated evidence ADR 0009 rejected: no shared channel is involved, so a failure cannot be silent. Note the trap it avoided — `ShieldConfiguration` substitutes Apple's own copy for any field left `nil`, so "an extension that never ran" and "an extension that ran and failed" are the *same screen* until you deliberately write text into every case.
 
 ---
 
@@ -143,8 +158,8 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 
 | Check | What it decides | Result | Evidence | Amendment fired |
 |---|---|---|---|---|
-| E1 | The evidence channel works | | | |
-| S1 | Keychain access group from an extension (gate) | | | |
+| E1 | The evidence channel works | **Blocked** | `devicectl device sysdiagnose` fails opaquely; `log collect` needs root | Evidence section rewritten above; per-capture human step accepted |
+| S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
 | S2 | `ShieldConfig` can mutate the store (gate) | | | |
 | S3 | Selection round-trips into the picker | | | |
 | C1 | Consent sentence and prompt appear | | | |
