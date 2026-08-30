@@ -66,6 +66,25 @@ swift test
 EOF
 }
 
+# The only verb that touches the app the way a person does. `test` proves the
+# kit's logic and `build` proves it compiles; neither presses anything, which is
+# how two broken hold-to-confirm fixes shipped. This drives the simulator.
+cmd_uitest() {
+  sync_tree
+  remote <<EOF
+set -euo pipefail
+export PATH="\$HOME/.local/bin:\$PATH"
+R="\$HOME/$ROOT"; mkdir -p "\$R/derived" "\$R/logs"
+cd "\$R/src"
+xcodegen generate --quiet
+set -o pipefail
+xcodebuild -project $SCHEME.xcodeproj -scheme $SCHEME \\
+  -destination 'platform=iOS Simulator,name=$SIM' \\
+  -derivedDataPath "\$R/derived" $PASS test 2>&1 \\
+  | tee "\$R/logs/uitest.log" | xcbeautify --quiet --disable-logging
+EOF
+}
+
 cmd_run() {
   cmd_build
   remote <<EOF
@@ -83,9 +102,9 @@ EOF
 }
 
 # The app became a UI at work item 5, and until now nothing in the loop could
-# look at one. A screenshot is as far as a headless simulator goes: simctl can
-# boot, install, launch and capture, but it cannot tap, so this reads the screen
-# the app happens to be on rather than driving it there.
+# look at one. A screenshot is as far as *simctl* goes: it can boot, install,
+# launch and capture, but it cannot tap, so this reads the screen the app
+# happens to be on rather than driving it there. Driving it is `uitest`.
 cmd_shot() {
   local out="${1:-$REPO/shot.png}"
   remote <<EOF
@@ -177,6 +196,7 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
 
   build            compile for the '$SIM' simulator. No signing, no human.
   test             swift test on $KIT, against Darwin Foundation.
+  uitest           drive the app on the simulator. The only verb that presses anything.
   run [secs]       build, launch on the simulator, print the app's own log lines.
   shot [file]      capture what the simulator is showing right now.
   log [mins]       re-read those log lines without rebuilding.
@@ -195,6 +215,7 @@ EOF
 case "${1:-help}" in
   build)  shift; cmd_build ;;
   test)   shift; cmd_test ;;
+  uitest) shift; cmd_uitest ;;
   run)    shift; cmd_run "$@" ;;
   shot)   shift; cmd_shot "$@" ;;
   log)    shift; cmd_log "$@" ;;

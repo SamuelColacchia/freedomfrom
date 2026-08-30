@@ -92,6 +92,31 @@ targets:
       - package: FreedomFromKit
         product: FreedomFromPlatform
 
+  # The only target that drives the app rather than building it. It exists for
+  # one class of bug: a gesture that compiles, animates, and never fires. Two
+  # such fixes shipped unverified before this target existed, because a green
+  # `build` and 76 green kit tests both say nothing about whether a button works
+  # (issue #38's PR, and FB15711941 underneath it).
+  #
+  # It runs on the simulator and touches no Family Controls: the hold it presses
+  # is reachable without authorization, which is what makes it runnable in the
+  # loop rather than on a cabled phone.
+  FreedomFromUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom.uitests
+        TEST_TARGET_NAME: FreedomFrom
+        # The three shipping targets each hand in a written Info.plist, so the
+        # base setting is NO. A test bundle ships nothing and has nothing to
+        # declare, so it takes the generated one rather than growing a file.
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: FreedomFrom
+
   # Draws the countdown in the dark, and is load-bearing twice over: it is the
   # reconciliation point that fires at the moment of harm (ADR 0004) and the
   # only process that can recognise freedomfrom's own token (ADR 0005).
@@ -126,5 +151,9 @@ schemes:
         ShieldConfig: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - FreedomFromUITests
     archive:
       config: Release
