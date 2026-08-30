@@ -25,7 +25,9 @@ The build spec ships these as named cases, written before their implementations.
 
 **Deadline reconciliation** (ADR 0002) — holds before the deadline; releases at it; releases on a deadline already past at launch, silently.
 
-**Walk-forward step** (ADR 0004) — a deadline inside one legal window yields a window ending at it; a distant deadline yields a 7-day window; a passed deadline yields nothing; the **final window starts at the deadline** and runs a further seven days; no window longer than 7 days is ever produced.
+**Walk-forward step** (ADR 0004) — a distant deadline yields a 7-day window from now; a deadline within one legal window yields the **final window, which starts at the deadline** and runs a further seven days; a passed deadline yields nothing; no window longer than 7 days is ever produced.
+
+> **Amended by [the v1 build spec](../v1-build-spec.md).** This line originally listed "a deadline inside one legal window yields a window ending at it" as a fourth case, alongside the final window that starts at the deadline. The two cannot both be the last step, and ADR 0004 settles it against the first: *"A window that ends at the deadline is a net only as wide as its final minutes."* `intervalDidStart` fires on first device use inside the interval, so a window starting at the deadline is a week-wide net for the release. The consequence, worth stating because it removes a clamp the kit would otherwise need: **every window the step produces is exactly seven days long**, so the 15-minute floor applies only to a commitment's duration and never to a window.
 
 **Clamps** (ADR 0002, ADR 0004) — a duration under 15 minutes is refused; over 365 days is refused; a remembered length is re-anchored to now rather than restored as a stored date.
 
