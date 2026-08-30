@@ -14,6 +14,10 @@ _Avoid_: session, block, lock, timer
 An app or web domain chosen to be blocked for the duration of a commitment.
 _Avoid_: site, blocked app, selection
 
+**Draft**:
+What you would commit to if you held right now: the targets and the length, as last left on screen. It persists between commitments, survives the app being deleted, and changes only when you change it or erase it with a clean slate.
+_Avoid_: selection, preset, template, last used
+
 **Deadline**:
 The absolute wall-clock instant a commitment ends. It passes on schedule whether or not the app is installed or running.
 _Avoid_: expiry, timeout, end time
@@ -27,7 +31,7 @@ The persisted record of past commitments, including which ones were broken. It o
 _Avoid_: log, journal, stats
 
 **Clean slate**:
-Deliberately erasing the commitment history. It ends nothing and lifts nothing; it removes the record of what came before.
+Deliberately erasing everything you authored: the commitment history and the draft. It ends nothing and lifts nothing; it removes the record of what came before and the list you would commit to next.
 _Avoid_: reset, wipe, clear
 
 ### Enforcement
