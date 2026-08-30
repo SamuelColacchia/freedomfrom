@@ -67,3 +67,39 @@ ADR 0002 rejected prompting to re-pick when tokens break, on the grounds that "y
 - **A draft with no history has no route to clean slate**, since ADR 0007 hides the history line when the history is empty. Accepted: the picker and the text field empty a draft by hand, and nothing is locked away.
 - **One hardware smoke check is added**: that a `FamilyActivitySelection` decoded from the Keychain and handed back to `FamilyActivityPicker` arrives with its apps checked. The whole answer rests on it, and it cannot be verified off-device.
 - **`FreedomFromKit` gains the draft**, alongside deadline reconciliation, the walk-forward step, and coverage. Persisting, restoring, and clearing it are pure logic, so they are headless-testable on the Mac.
+
+## Amended by hardware: the draft keeps words, not apps
+
+> Hardware smoke check S3 came back **red**. A `FamilyActivitySelection` decoded
+> from the Keychain does not hand back to `FamilyActivityPicker` with its apps
+> checked, so the row this ADR wrote as "verified by opening the picker sheet,
+> which arrives with them checked" describes something that does not happen.
+
+The draft keeps the typed web domains and the chosen length. **Apps are re-picked
+every time.**
+
+This is the option this ADR considered and rejected as "remembering typed domains
+only", now arrived at by evidence rather than by preference. Its objection stands
+and is simply paid: hunting apps through the system picker becomes a
+per-commitment cost, and the draft needs a rule about which half of a target set
+survives.
+
+Two things fall out of it, both improvements this ADR would not have chosen:
+
+- **The born-degraded path closes at source.** Every app token is freshly minted
+  and freshly seen, so a commitment can no longer be degraded at birth. The
+  concept is not removed — a token can still churn mid-commitment — but it stops
+  being reachable from the draft.
+- **The count on Targets stops being able to lie.** It reads what this session
+  picked, not what a stale encoding claims.
+
+**One write trigger goes with them.** This ADR said the draft is written when the
+picker sheet returns, when a typed domain is committed with return, and when the
+app backgrounds. The first of those wrote the selection and its count, and now
+has nothing to write, so the list is two: a committed domain, and a backgrounding.
+The sentence it justified is unchanged — a finished domain still always survives
+an interruption, and a half-typed one still never does.
+
+What does not change: the entrance stays untaxed for everything the app can
+actually read back. ADR 0001's rule is unmoved, and the domains a user typed —
+the part of a target set with words — still survive an interruption.

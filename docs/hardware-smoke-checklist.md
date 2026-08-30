@@ -162,8 +162,8 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 |---|---|---|---|---|
 | E1 | The evidence channel works | **Blocked** | `devicectl device sysdiagnose` fails opaquely; `log collect` needs root | Evidence section rewritten above; per-capture human step accepted |
 | S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
-| S2 | `ShieldConfig` can mutate the store (gate) | | | |
-| S3 | Selection round-trips into the picker | | | |
+| S2 | `ShieldConfig` can mutate the store (gate) | Inconclusive, re-run | No `shieldconfig` lines in the archive | None — not a result |
+| S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
 | C1 | Consent sentence and prompt appear | | | |
 | C2 | The shield applies | | | |
 | C3 | Which browsers the filter covers | | | |

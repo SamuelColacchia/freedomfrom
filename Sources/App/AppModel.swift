@@ -23,7 +23,20 @@ final class AppModel {
 
     private(set) var record = Record.empty
     private(set) var coverage = Coverage(resolved: 0, named: 0)
+
+    /// The apps chosen in *this* session, and nowhere else. Never restored from
+    /// the record: hardware check S3 came back red, so a stored selection does
+    /// not hand back to the picker with its apps checked (ADR 0008, as amended).
     var selection = FamilyActivitySelection()
+
+    /// How many apps that selection names, minted the same way commit mints
+    /// them, so the number on screen is the number that will be enforced.
+    ///
+    /// Held rather than computed because every read of it encodes a token, and
+    /// the two screens that show it redraw far more often than the picker
+    /// closes. It moves only where `selection` does, and both places it moves
+    /// are in this file.
+    private(set) var chosenTargetCount = 0
 
     /// Whether the record has been read yet. Until it has, the root draws the
     /// launch background and nothing else: routing on an empty record would
@@ -52,7 +65,10 @@ final class AppModel {
         return Coverage(resolved: coverage.resolved + domains, named: coverage.named + domains)
     }
 
-    var canCommit: Bool { !record.draft.isEmpty }
+    /// The two halves of a target set live apart now — apps in this session,
+    /// domains in the draft — so the question of whether there is anything to
+    /// commit to is asked here, where both are in view.
+    var canCommit: Bool { chosenTargetCount > 0 || !record.draft.domains.isEmpty }
 
     // MARK: - Launch and foreground
 
@@ -123,21 +139,16 @@ final class AppModel {
             // Nothing to say and nothing safe to assume. The next foreground
             // tries again; until then the app holds what it last knew.
             return
+        // Nothing here touches `selection`. A stored one does not come back
+        // checked (hardware check S3), so restoring it would put a count on
+        // Targets that the picker then contradicts. Reconciliation moves the
+        // record; the picker is the only thing that moves the selection.
         case .idle(let record), .released(let record):
             self.record = record
             coverage = Coverage(resolved: 0, named: 0)
-            // The draft's apps are a count on Targets and a set of checkmarks
-            // in the picker, and the picker reads this property. Without the
-            // decode it opens empty on every launch, and dismissing it writes
-            // that emptiness back over the draft — so the one screen ADR 0008
-            // says arrives holding what you left in it would quietly erase it.
-            // This is the app's half of hardware check S3; the platform's half
-            // is whether the decoded selection arrives checked.
-            selection = TargetHandles.decode(record.draft.encodedSelection) ?? selection
         case .running(let record, let coverage):
             self.record = record
             self.coverage = coverage
-            selection = TargetHandles.decode(record.active?.encodedSelection) ?? selection
         }
     }
 
@@ -164,12 +175,12 @@ final class AppModel {
         await requestAuthorization()
     }
 
-    // MARK: - The draft
+    // MARK: - The picked apps, and the draft
 
+    /// The picker has closed. Nothing is written: apps are not part of the
+    /// draft, so this changes only what this session is holding.
     func selectionChanged() {
-        record.draft.encodedSelection = TargetHandles.encode(selection)
-        record.draft.namedTargetCount = TargetHandles.mint(from: selection).count
-        persist()
+        chosenTargetCount = TargetHandles.mint(from: selection).count
     }
 
     func addDomain(_ typed: String) {
@@ -186,9 +197,12 @@ final class AppModel {
         record.draft.length = length
     }
 
-    /// The draft is written when the picker returns, when a domain is committed
-    /// with return, and when the app backgrounds — so a finished domain always
-    /// survives an interruption and a half-typed one never does (ADR 0008).
+    /// The draft is written when a domain is committed with return, and when
+    /// the app backgrounds — so a finished domain always survives an
+    /// interruption and a half-typed one never does (ADR 0008).
+    ///
+    /// The picker returning used to write too. It no longer has anything to
+    /// write: apps left the draft when hardware check S3 came back red.
     func persist() {
         // Fire and forget. A draft write is the user's own edit landing, so
         // nothing waits on it and nothing reads its result — and it is still a
@@ -294,6 +308,7 @@ final class AppModel {
     func cleanSlate() {
         record.cleanSlate()
         selection = FamilyActivitySelection()
+        chosenTargetCount = 0
         persist()
     }
 }

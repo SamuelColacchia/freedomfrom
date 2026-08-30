@@ -30,8 +30,6 @@ struct RecordCodecTests {
                 )
             ],
             draft: Draft(
-                encodedSelection: Data([0x09]),
-                namedTargetCount: 2,
                 domains: [WebDomain(canonical: "www.example.com")],
                 length: .preset(.thirtyDays)
             ),
@@ -73,6 +71,42 @@ struct RecordCodecTests {
         let decoded = try RecordCodec.decode(RecordCodec.encode(record))
         #expect(decoded.draft.length == .custom(seconds: 60 * 60 * 24 * 100))
     }
+
+    /// The record outlives app deletion, so it also outlives the build that
+    /// wrote it: a phone that drafted apps before hardware check S3 came back
+    /// red still holds a draft carrying them. Opening it must not fail, and must
+    /// not resurrect them — what survives is the words and the length (ADR 0008,
+    /// as amended).
+    @Test("a draft written before apps left it still opens, keeping the words and the length")
+    func draftFromBeforeTheAmendmentOpens() throws {
+        let original = Record(
+            draft: Draft(
+                domains: [WebDomain(canonical: "example.com")],
+                length: .preset(.thirtyDays)
+            ),
+            hasSeenFirstRun: true
+        )
+
+        let decoded = try RecordCodec.decode(
+            withLegacyDraftKeys(try RecordCodec.encode(original)))
+
+        #expect(decoded == original)
+    }
+
+    /// Re-adds the two keys a draft used to carry, so the bytes under test are
+    /// the ones an older build actually wrote rather than a hand-typed guess at
+    /// them.
+    private func withLegacyDraftKeys(_ data: Data) throws -> Data {
+        var record = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var draft = try #require(record["draft"] as? [String: Any])
+
+        draft["encodedSelection"] = Data([0x09]).base64EncodedString()
+        draft["namedTargetCount"] = 2
+        record["draft"] = draft
+
+        return try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+    }
 }
 
 @Suite("A clean slate erases everything you authored, and only that")
@@ -89,7 +123,7 @@ struct CleanSlateTests {
                     outcome: .completed
                 )
             ],
-            draft: Draft(namedTargetCount: 4),
+            draft: Draft(domains: [WebDomain(canonical: "example.com")]),
             hasSeenFirstRun: true
         )
 
@@ -101,7 +135,8 @@ struct CleanSlateTests {
 
     @Test("first run does not come back")
     func firstRunStaysSeen() {
-        var record = Record(draft: Draft(namedTargetCount: 4), hasSeenFirstRun: true)
+        var record = Record(
+            draft: Draft(domains: [WebDomain(canonical: "example.com")]), hasSeenFirstRun: true)
         record.cleanSlate()
         #expect(record.hasSeenFirstRun)
     }
@@ -115,7 +150,8 @@ struct CleanSlateTests {
             namedHandles: [],
             domains: []
         )
-        var record = Record(active: commitment, draft: Draft(namedTargetCount: 2))
+        var record = Record(
+            active: commitment, draft: Draft(domains: [WebDomain(canonical: "example.com")]))
 
         record.cleanSlate()
 

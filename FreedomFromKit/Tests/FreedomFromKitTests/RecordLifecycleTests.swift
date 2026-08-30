@@ -26,8 +26,6 @@ private func commitment(
 @Suite("The draft is yours, and only you and a clean slate edit it")
 struct DraftTests {
     private let draft = Draft(
-        encodedSelection: Data([0x01]),
-        namedTargetCount: 2,
         domains: [WebDomain.canonicalize("example.com")!],
         length: .preset(.sevenDays)
     )

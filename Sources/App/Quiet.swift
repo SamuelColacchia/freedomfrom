@@ -89,6 +89,10 @@ struct QuietButton: View {
 /// nothing has happened, which is the same silence every other refused action
 /// in the app gets.
 struct HoldToConfirm: View {
+    /// Further than a thumb can drift and still be on the phone, so no drift
+    /// cancels a hold, while staying a number the gesture recogniser can work in.
+    private static let anyDrift: CGFloat = 10_000
+
     let title: String
     let duration: TimeInterval
     let action: () -> Void
@@ -109,12 +113,18 @@ struct HoldToConfirm: View {
             }
             .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
             .contentShape(Rectangle())
-            // `maximumDistance` is deliberately enormous. A five-second hold is
-            // long enough that a thumb always drifts, and the default distance
-            // cancels the press when it does — which reads as the hold being
-            // broken rather than as the finger having moved. SwiftUI owns the
-            // timing here, so the fill and the action cannot desync either.
-            .onLongPressGesture(minimumDuration: duration, maximumDistance: .infinity) {
+            // `maximumDistance` is deliberately enormous, and deliberately
+            // finite. A five-second hold is long enough that a thumb always
+            // drifts, and the default 10pt cancels the press when it does,
+            // which reads as the hold being broken rather than as the finger
+            // having moved. But `.infinity` breaks it a second way: the value
+            // reaches `UILongPressGestureRecognizer.allowableMovement`, and an
+            // infinite allowance leaves the recognizer unable to decide the
+            // press ever ended, so `onPressingChanged` still fires and fills
+            // the bar while the completion never arrives. Every use of
+            // `maximumDistance: .infinity` in the wild pairs it with an empty
+            // `perform:`, for exactly that reason.
+            .onLongPressGesture(minimumDuration: duration, maximumDistance: Self.anyDrift) {
                 action()
             } onPressingChanged: { pressing in
                 withAnimation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2)) {
