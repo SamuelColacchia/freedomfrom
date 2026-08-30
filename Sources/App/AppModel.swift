@@ -58,6 +58,11 @@ final class AppModel {
 
     func onLaunch() async {
         log.woke("launch")
+        #if HARDWARE_PASS
+            // Announced every launch so no capture can be mistaken for a clean
+            // run. A build carrying a release control is not the product.
+            log.woke("hardware-pass build")
+        #endif
         // Read before placing: an absent marker beside a running commitment is
         // the only evidence that this install is not the one that committed.
         let reinstalled = !marker.isPresent
@@ -206,6 +211,43 @@ final class AppModel {
         record.endedScreenPending = false
         persist()
     }
+
+    #if HARDWARE_PASS
+        /// Brings the deadline forward to now, so the ordinary release path
+        /// runs. Compiled only into a build that asked for it.
+        ///
+        /// The product has no such action anywhere, by design (ADR 0001). The
+        /// hardware pass needs one anyway: it commits and observes fifteen
+        /// times, and the only other way out is the Screen Time revoke — which
+        /// *is* check X1, and taking it repeatedly would contaminate every
+        /// observation of the clean run it is supposed to be separate from.
+        ///
+        /// It shortens the deadline rather than releasing directly, so what
+        /// gets exercised is the same reconciliation the Monitor and the shield
+        /// run. A release reached by a different path would prove nothing about
+        /// the one that ships.
+        func releaseForHardwarePass() async {
+            guard let active = record.active else { return }
+
+            var shortened = record
+            shortened.begin(
+                Commitment(
+                    id: active.id,
+                    startedAt: active.startedAt,
+                    deadline: Date(),
+                    encodedSelection: active.encodedSelection,
+                    namedHandles: active.namedHandles,
+                    domains: active.domains,
+                    isDegraded: active.isDegraded,
+                    isBroken: active.isBroken
+                ))
+
+            // Named in the log so a capture shows the run was not clean.
+            log.storeMutation("hardware-pass release", landed: true)
+            try? store.write(shortened)
+            apply(reconciler.run())
+        }
+    #endif
 
     func cleanSlate() {
         record.cleanSlate()

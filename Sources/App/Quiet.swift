@@ -94,7 +94,6 @@ struct HoldToConfirm: View {
     let action: () -> Void
 
     @State private var progress: CGFloat = 0
-    @State private var countdown: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geometry in
@@ -110,29 +109,19 @@ struct HoldToConfirm: View {
             }
             .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in begin() }
-                    .onEnded { _ in abandon() }
-            )
+            // `maximumDistance` is deliberately enormous. A five-second hold is
+            // long enough that a thumb always drifts, and the default distance
+            // cancels the press when it does — which reads as the hold being
+            // broken rather than as the finger having moved. SwiftUI owns the
+            // timing here, so the fill and the action cannot desync either.
+            .onLongPressGesture(minimumDuration: duration, maximumDistance: .infinity) {
+                action()
+            } onPressingChanged: { pressing in
+                withAnimation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2)) {
+                    progress = pressing ? 1 : 0
+                }
+            }
         }
         .frame(height: 58)
-    }
-
-    private func begin() {
-        guard countdown == nil else { return }
-        withAnimation(.linear(duration: duration)) { progress = 1 }
-        countdown = Task {
-            try? await Task.sleep(for: .seconds(duration))
-            guard !Task.isCancelled else { return }
-            countdown = nil
-            action()
-        }
-    }
-
-    private func abandon() {
-        countdown?.cancel()
-        countdown = nil
-        withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
     }
 }

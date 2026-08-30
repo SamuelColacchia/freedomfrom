@@ -41,6 +41,22 @@ struct CountdownView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 14)
             }
+
+            #if HARDWARE_PASS
+                // The second action on the app's most-seen screen, which the
+                // one-action invariant forbids — and which is why it is named
+                // for the build it belongs to rather than for what it does.
+                Button {
+                    Task { await model.releaseForHardwarePass() }
+                } label: {
+                    Text("release · hardware-pass build")
+                        .font(.system(size: 12, weight: .light))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 18)
+                }
+                .buttonStyle(.plain)
+            #endif
         }
         .quietScreen()
         .navigationDestination(for: Spur.self) { _ in EscapeView() }

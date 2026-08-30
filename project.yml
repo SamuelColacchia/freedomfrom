@@ -29,6 +29,16 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+  configs:
+    # HARDWARE_PASS compiles in a release control the product does not have and
+    # must never ship with (ADR 0001: there is no in-app escape hatch). It is
+    # absent unless FREEDOMFROM_HARDWARE_PASS is set on the xcodebuild command
+    # line, which `scripts/mac` only does when the environment asks for it — so
+    # an ordinary archive cannot contain it by forgetting anything.
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(FREEDOMFROM_HARDWARE_PASS)"
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(FREEDOMFROM_HARDWARE_PASS)"
 
 targets:
   FreedomFrom:
@@ -44,6 +54,10 @@ targets:
         PRODUCT_NAME: FreedomFrom
         INFOPLIST_FILE: Sources/App/Info.plist
         CODE_SIGN_ENTITLEMENTS: Sources/App/FreedomFrom.entitlements
+        # The catalog exists to hold the launch background, not an icon. Left
+        # named and empty, the build fails looking for an "AppIcon" set that
+        # nobody has drawn yet.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
     dependencies:
       - package: FreedomFromKit
         product: FreedomFromKit
