@@ -42,7 +42,7 @@ The full reasoning, and the measurements behind it, are in
 
 ### Issue tracker
 
-Issues and PRDs live in this repo's GitHub Issues, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in this repo's GitHub Issues, via the `gh` CLI. **Every issue gets a milestone at creation time** — currently `v1`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

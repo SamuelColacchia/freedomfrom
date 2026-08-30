@@ -15,6 +15,18 @@ Use the `gh` CLI for all operations.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Every issue carries a milestone
+
+**No issue in this repo may sit without a milestone.** A milestone is how the work is grouped into a shippable release; an unmilestoned issue is invisible to every "what's left before we ship" question.
+
+- **Creating an issue**: pass the milestone in the same command. `gh issue create --title "..." --body "..." --milestone "v1"`. Never create an issue and set the milestone in a second pass — the second pass gets forgotten.
+- **Which milestone**: the current open one. `gh api repos/{owner}/{repo}/milestones --jq '.[] | select(.state=="open") | .title'`. If exactly one is open, use it. If several are open, ask which one before creating.
+- **No open milestone exists**: stop and ask what the release is called before creating issues. Don't invent one silently.
+- **Closed issues too**: backfill them. Milestone progress is computed from open vs closed, so a closed issue without a milestone undercounts the work done.
+- **Bulk backfill**: `for n in $(gh issue list --state all --limit 100 --json number --jq '.[].number'); do gh api --method PATCH "repos/{owner}/{repo}/issues/$n" -F milestone=<milestone-number>; done`. Note `gh issue edit --milestone` takes the title, while the `gh api` PATCH takes the numeric milestone id.
+
+Current milestone: **`v1`** (milestone number `1`) — everything from the wayfinder planning phase through hardware runs to TestFlight.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

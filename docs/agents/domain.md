@@ -18,8 +18,8 @@ This repo is **single-context**:
 /
 ├── CONTEXT.md
 ├── docs/adr/
-│   ├── 0001-screen-time-authorization-model.md
-│   └── 0002-network-extension-vs-managed-settings.md
+│   ├── 0001-app-applied-restrictions-as-v1-bypass-resistance.md
+│   └── … through 0010-the-mac-is-a-mirror-and-a-simulator.md
 └── src/
 ```
 
