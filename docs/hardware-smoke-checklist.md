@@ -66,6 +66,27 @@ change is cheap and the next phone session is not. If S2's re-run comes back
 with an archive that is still empty, the level was not the cause and this
 paragraph is what needs revisiting.
 
+> **The two runs after it both came back full**, at notice level, one of them
+> reading the extension's whole release sequence out of a collect taken well
+> after the event. That is consistent with the level having been the cause and
+> does not prove it, since nothing re-ran the old build to watch it fail. The
+> contract stands either way.
+
+**`log collect --device-udid` takes the hardware UDID, not the CoreDevice one.**
+`xcrun devicectl list devices` prints an Identifier column of UUIDs like
+`7EE3550E-…`, and that is the argument to `devicectl --device`. Handing it to
+`log collect` fails with `Device not configured (6)` against a phone that is
+cabled, paired, unlocked and answering every other subcommand. The UDID it wants
+is ECID-derived and looks like `00008120-…`:
+
+```sh
+xcrun devicectl device info details --device <coredevice-uuid> --json-output /tmp/d.json
+plutil -extract result.hardwareProperties.udid raw -o - /tmp/d.json
+```
+
+`scripts/hardware-s2-s3` resolves it in preflight and prints the collect line
+with the right one already in it.
+
 **`--info --debug` are kept on every `log show` here, and they are not the fix.**
 They select which of the messages an archive *already holds* get printed, so they
 are the difference between seeing a `.info` line and not seeing one — which is
@@ -189,7 +210,7 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 |---|---|---|---|---|
 | E1 | The evidence channel works | **Blocked** | `devicectl device sysdiagnose` fails opaquely; `log collect` needs root | Evidence section rewritten above; per-capture human step accepted |
 | S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
-| S2 | `ShieldConfig` can mutate the store (gate) | Inconclusive, re-run | No `shieldconfig` lines in the archive | None — not a result |
+| S2 | `ShieldConfig` can mutate the store (gate) | **Green** | `shieldconfig` logs `store mutation release landed=true`; shield gone on the next open, no jetsam. The final window was suppressed and `monitor` logged nothing, so the extension was the only process that could have taken it | None |
 | S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
 | C1 | Consent sentence and prompt appear | | | |
 | C2 | The shield applies | | | |
