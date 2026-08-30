@@ -74,6 +74,20 @@ xcrun simctl spawn booted log show --last 2m --style compact --info --debug \\
 EOF
 }
 
+# The app became a UI at work item 5, and until now nothing in the loop could
+# look at one. A screenshot is as far as a headless simulator goes: simctl can
+# boot, install, launch and capture, but it cannot tap, so this reads the screen
+# the app happens to be on rather than driving it there.
+cmd_shot() {
+  local out="${1:-$REPO/shot.png}"
+  remote <<EOF
+set -euo pipefail
+xcrun simctl io booted screenshot --type=png "\$HOME/$ROOT/logs/shot.png" >/dev/null 2>&1
+EOF
+  scp -q -o BatchMode=yes "$HOST:$ROOT/logs/shot.png" "$out"
+  echo "$out"
+}
+
 cmd_log() {
   remote <<EOF
 xcrun simctl spawn booted log show --last ${1:-5}m --style compact --info --debug \\
@@ -156,6 +170,7 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
   build            compile for the '$SIM' simulator. No signing, no human.
   test             swift test on $KIT, against Darwin Foundation.
   run [secs]       build, launch on the simulator, print the app's own log lines.
+  shot [file]      capture what the simulator is showing right now.
   log [mins]       re-read those log lines without rebuilding.
   rawlog [lines]   tail the unfiltered xcodebuild log.
   device           sign and install on the phone. Needs a cable and a human-unlocked socket.
@@ -170,6 +185,7 @@ case "${1:-help}" in
   build)  shift; cmd_build ;;
   test)   shift; cmd_test ;;
   run)    shift; cmd_run "$@" ;;
+  shot)   shift; cmd_shot "$@" ;;
   log)    shift; cmd_log "$@" ;;
   rawlog) shift; cmd_rawlog "$@" ;;
   device) shift; cmd_device ;;

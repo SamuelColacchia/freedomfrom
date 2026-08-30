@@ -141,6 +141,10 @@ Three rules follow, and they are the point of the design:
 
 **One value lives outside the record**, and only one: the running commitment's deadline, mirrored into the App Group at commit and cleared at release. `ShieldConfig` reads it; nothing else does. It is derived and never authoritative, it is an atomic file write rather than `UserDefaults`, and a stale copy can only cost a wrong number on a shield or a late release, never an early one.
 
+**Sharpened here: a second thing lives outside the record, and it holds no value at all.** The break rule above says an app that launches and finds a commitment still running knows it was deleted mid-commitment. Read literally that is every launch, which would mark every commitment broken the second time it was opened. The missing half is a zero-byte marker in the app's *own* sandbox — the one store here that does **not** survive deletion. Record present, marker absent, therefore this install is not the one that committed. It carries nothing; its existence is the whole signal, so a read failure and an absent file are deliberately the same answer.
+
+Two smaller consequences of building it: the deadline mirror is written at **every** reconciliation rather than only at commit, so a mirror lost to a reinstall is repaired rather than left missing for the life of the commitment; and release writes `nil` to `webContent.blockedByFilter` rather than the `.none` written at §7, because that property is an optional whose wrapped type also has a `none` case and `.none` would resolve to `Optional.none` regardless. Unset is what release means.
+
 **The two flags are not part of "everything you authored."** A clean slate erases the history and the draft; first run still shows once, ever, and a pending "Ended." survives it. See [ADR 0008](./adr/0008-the-root-holds-a-draft.md).
 
 **Each device is an island.** Tokens are device-local and opaque, authorization is per device, and nothing syncs. Committing on the iPhone does nothing to the iPad, and `denyAppRemoval` bites per device.
