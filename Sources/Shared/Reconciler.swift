@@ -35,6 +35,10 @@ struct Reconciler {
     /// is where the app observes a break — a revoked authorization or a
     /// reinstall — so the mark lands in the same read-modify-write as the
     /// reconciliation rather than in a second one that could interleave.
+    /// Discardable because the two callers want different things from it: the
+    /// app renders the state it returns, and `Monitor` has nothing to render —
+    /// it reconciles and exits, and the log line is its whole output.
+    @discardableResult
     func run(now: Date = Date(), marking: (inout Record) -> Void = { _ in }) -> State {
         let stored: Record?
         do {
