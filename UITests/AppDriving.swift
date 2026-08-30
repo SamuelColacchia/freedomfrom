@@ -1,9 +1,5 @@
 import XCTest
 
-/// The kit's `WebDomain.ceiling`, restated rather than imported: a UI test
-/// bundle links the app it drives, not the app's packages.
-private let webDomainCeiling = 50
-
 /// Getting the app to the screen a test is about, shared by everything in this
 /// bundle.
 ///
@@ -100,11 +96,11 @@ extension XCTestCase {
     /// from nothing chosen without reaching into a store it is not allowed to
     /// touch.
     ///
-    /// Bounded by the fifty-domain ceiling (ADR 0006): a remove that stopped
-    /// removing would otherwise spin here rather than fail.
+    /// One tap per row that was there when it started, because a remove that
+    /// stopped removing should fail the assertion below rather than spin here.
     func clearTypedDomains(in app: XCUIApplication) {
         let removes = removeButtons(in: app)
-        for _ in 0...webDomainCeiling where removes.count > 0 {
+        for _ in 0..<removes.count {
             removes.element(boundBy: 0).tap()
         }
         XCTAssertEqual(

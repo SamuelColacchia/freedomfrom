@@ -6,9 +6,11 @@ import XCTest
 /// goes live on a typed domain, a refused one leaves the screen exactly as it
 /// was, a finished domain outlives an interruption and a half-typed one does
 /// not. None of that is reachable from a compiler or from the kit's suite, and
-/// the only evidence any of it ever had was a gallery of renders that was
-/// thrown away — taken before the draft lost its apps (#38) and before the
-/// count learned to name a category (#44), so it no longer describes this app.
+/// the only evidence any of it ever had was a throwaway view that drew each
+/// screen in turn for `scripts/mac shot` to photograph, deleted once the
+/// photographs were taken. Those photographs predate the draft losing its apps
+/// (ADR 0008's S3 amendment, in #38) and the count learning to name a category
+/// (#44), so they no longer describe this app either.
 ///
 /// **What this cannot reach.** The picker is a system sheet with nothing behind
 /// it on a simulator that has declined authorization, so "the picker is a sheet"
@@ -85,26 +87,43 @@ final class TargetsUITests: XCTestCase {
     ///
     /// `nodot` canonicalizes to a host with no dot, which cannot match anything,
     /// so the app drops it (ADR 0006). That refusal is a flow rule rather than
-    /// an error, and the app has no voice for it — so the evidence is that the
-    /// screen is identical afterwards and no alert was raised.
+    /// an error, and the app has no voice for it — so the evidence is a screen
+    /// that is one row shorter than it would be, and no alert.
+    ///
+    /// One accepted domain goes in first, and it is doing work rather than
+    /// setting a scene: on an empty screen every assertion below is already
+    /// true before anything is typed, so a canonicalization that accepted
+    /// everything would pass. The accepted row is what makes the count, the
+    /// list and Next answer honestly when a row *is* added.
     func testARefusedDomainChangesNothingAndSaysNothing() throws {
         let app = try launchOnTargets()
         clearTypedDomains(in: app)
+        try type("accepted.example.com\n", intoFieldOf: app)
+        XCTAssertEqual(
+            removeButtons(in: app).count, 1,
+            "An accepted domain did not reach the screen, so nothing below means anything.")
 
         try type("nodot\n", intoFieldOf: app)
 
         XCTAssertEqual(
-            removeButtons(in: app).count, 0,
+            removeButtons(in: app).count, 1,
             "A refused entry put a row on the targets screen that blocks nothing.")
         XCTAssertFalse(
             app.staticTexts["nodot"].exists,
             "A refused entry is not displayed: displayed, stored and applied are the same string.")
         XCTAssertFalse(
-            app.buttons["Next"].isEnabled,
-            "A refused entry counted towards having something to commit to.")
-        XCTAssertFalse(
             app.alerts.firstMatch.exists || authorizationPrompt.exists,
             "The app said something about a refusal. It has no voice for one (ADR 0003).")
+
+        clearTypedDomains(in: app)
+        XCTAssertFalse(
+            app.buttons["Next"].isEnabled,
+            """
+            Every row is off the screen and Next is still live, so something \
+            was stored that was never displayed. Displayed, stored and applied \
+            are the same string (ADR 0006).
+            \(app.debugDescription)
+            """)
     }
 
     /// A finished domain survives an interruption and a relaunch.
