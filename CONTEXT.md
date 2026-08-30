@@ -19,7 +19,7 @@ The absolute wall-clock instant a commitment ends. It passes on schedule whether
 _Avoid_: expiry, timeout, end time
 
 **Degraded commitment**:
-A commitment still running to its deadline, but with one or more of its targets no longer shielded because they can no longer be identified. Coverage is reduced; the deadline is untouched.
+A commitment still running to its deadline which has at some point lost coverage of one or more of its targets, because they could no longer be identified. The mark is permanent for the life of the commitment even if coverage later returns; the deadline is untouched throughout.
 _Avoid_: partial, broken, failed, expired
 
 **Commitment history**:
@@ -35,6 +35,10 @@ _Avoid_: reset, wipe, clear
 **Shield**:
 Apple's interstitial that replaces a target's interface while a commitment runs. Per-target.
 _Avoid_: block screen, overlay, paywall
+
+**Coverage**:
+The targets a commitment is shielding right now, as against the targets it names. The two diverge when a target can no longer be identified, and coverage is worked out afresh every time anything reconciles.
+_Avoid_: scope, protection, enforcement
 
 **Restriction**:
 A device-wide setting the app applies for a commitment's duration — no app deletion, forced automatic date and time. Distinct from a shield, which applies only to chosen targets.
@@ -59,5 +63,9 @@ One of the three ways a user can end a commitment before its deadline: revoking 
 _Avoid_: bypass, workaround, exploit
 
 **Break**:
-Ending a commitment before its deadline by taking an escape route.
+A mark on a commitment whose enforcement lapsed before its deadline, because the user took an escape route. It does not end the commitment: the deadline still stands, coverage may come back, and the history records that it ran broken.
 _Avoid_: quit, cancel, fail, relapse
+
+**Completed**:
+A commitment that reached its deadline with no break ever observed. A commitment nobody was running to witness reads as completed, because the app holds no evidence otherwise.
+_Avoid_: successful, kept, survived
