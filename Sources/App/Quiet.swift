@@ -88,50 +88,84 @@ struct QuietButton: View {
 /// Releasing early is not a failure to report — the fill simply retreats and
 /// nothing has happened, which is the same silence every other refused action
 /// in the app gets.
+/// There is deliberately no `onLongPressGesture` here.
+///
+/// It was the obvious way to write this and it does not work. On iOS 18 and
+/// later the long-press recogniser reports the press beginning — so
+/// `onPressingChanged` fires and the bar fills the whole way — and then never
+/// reaches its completion, so `perform` is never called. Apple has the report
+/// as FB15711941, still reproducing on 18.3, and the durations this app needs
+/// are exactly the ones that fail: the workarounds offered are all in the
+/// tenths of a second.
+///
+/// Two attempts were made to keep the recogniser by tuning `maximumDistance`,
+/// first `.infinity` and then a large finite value. Neither changed anything,
+/// because the distance was never what was wrong.
+///
+/// So the recogniser is gone from the path that matters. What replaces it is a
+/// zero-distance drag, which is only asked the two questions it answers
+/// reliably — the finger is down, the finger is up — and an explicit clock
+/// between them. This is what the production hold-to-confirm implementations in
+/// the wild do, for this reason.
 struct HoldToConfirm: View {
-    /// Further than a thumb can drift and still be on the phone, so no drift
-    /// cancels a hold, while staying a number the gesture recogniser can work in.
-    private static let anyDrift: CGFloat = 10_000
-
     let title: String
     let duration: TimeInterval
     let action: () -> Void
 
     @State private var progress: CGFloat = 0
 
+    /// The running hold, and the flag that makes starting one idempotent: a
+    /// drag reports every tremor in a thumb, and only the first begins a hold.
+    @State private var holding: Task<Void, Never>?
+
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Quiet.ink).frame(width: geometry.size.width * progress)
-                Text(title)
-                    .font(.system(size: 14, weight: .light))
-                    .tracking(2.5)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Quiet.ink)
-                    .blendMode(.difference)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
-            .contentShape(Rectangle())
-            // `maximumDistance` is deliberately enormous, and deliberately
-            // finite. A five-second hold is long enough that a thumb always
-            // drifts, and the default 10pt cancels the press when it does,
-            // which reads as the hold being broken rather than as the finger
-            // having moved. But `.infinity` breaks it a second way: the value
-            // reaches `UILongPressGestureRecognizer.allowableMovement`, and an
-            // infinite allowance leaves the recognizer unable to decide the
-            // press ever ended, so `onPressingChanged` still fires and fills
-            // the bar while the completion never arrives. Every use of
-            // `maximumDistance: .infinity` in the wild pairs it with an empty
-            // `perform:`, for exactly that reason.
-            .onLongPressGesture(minimumDuration: duration, maximumDistance: Self.anyDrift) {
-                action()
-            } onPressingChanged: { pressing in
-                withAnimation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2)) {
-                    progress = pressing ? 1 : 0
-                }
-            }
+        ZStack(alignment: .leading) {
+            // Scaled rather than sized to a `GeometryReader`'s width, so the
+            // fill is one GPU transform on a view whose layout never changes.
+            Rectangle()
+                .fill(Quiet.ink)
+                .scaleEffect(x: progress, anchor: .leading)
+            Text(title)
+                .font(.system(size: 14, weight: .light))
+                .tracking(2.5)
+                .textCase(.uppercase)
+                .foregroundStyle(Quiet.ink)
+                .blendMode(.difference)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(height: 58)
+        .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
+        .contentShape(Rectangle())
+        // Two holds exist and never share a screen, so one identifier reaches
+        // whichever is on it. `FreedomFromUITests` presses this.
+        .accessibilityIdentifier("hold")
+        .accessibilityLabel(title)
+        // Zero minimum distance, so this is a press and not a swipe — and a
+        // drag never cancels itself on movement, which is what the long press
+        // needed `maximumDistance` for. A thumb can wander the whole screen.
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in begin() }
+                .onEnded { _ in end() }
+        )
+    }
+
+    private func begin() {
+        guard holding == nil else { return }
+
+        withAnimation(.linear(duration: duration)) { progress = 1 }
+        holding = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(duration))
+            // A cancelled sleep is a hold released early, which is not a
+            // failure to report: the bar retreats and nothing has happened.
+            guard !Task.isCancelled else { return }
+            action()
+        }
+    }
+
+    private func end() {
+        holding?.cancel()
+        holding = nil
+        withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
     }
 }
