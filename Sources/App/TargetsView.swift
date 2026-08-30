@@ -30,10 +30,10 @@ struct TargetsView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Text("\(model.chosenTargetCount)")
+                Text("\(model.chosen.picked)")
                     .font(.system(size: 64, weight: .ultraLight))
                     .foregroundStyle(Quiet.ink)
-                Text("chosen")
+                Text(chosenWords)
                     .font(.system(size: 13, weight: .light))
                     .foregroundStyle(Quiet.whisper)
             }
@@ -103,6 +103,14 @@ struct TargetsView: View {
             case .history: HistoryView(model: model)
             }
         }
+    }
+
+    /// "chosen" while the picker returned only apps, and the breakdown the
+    /// moment it returns a category — because the number above drops when a
+    /// whole category replaces the apps in it, and a bare "chosen" beside a
+    /// smaller number reads as having lost something rather than blocked more.
+    private var chosenWords: String {
+        model.chosen.categories == 0 ? "chosen" : model.chosen.words
     }
 
     private var placeholder: Text {

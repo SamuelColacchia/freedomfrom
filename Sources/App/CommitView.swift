@@ -67,15 +67,7 @@ struct CommitView: View {
     }
 
     private var targetWords: String {
-        let apps = model.chosenTargetCount
-        let sites = model.draft.domains.count
-        return [count(apps, "app"), count(sites, "website")]
-            .compactMap { $0 }
-            .joined(separator: " and ")
-    }
-
-    private func count(_ n: Int, _ noun: String) -> String? {
-        n == 0 ? nil : "\(n) \(noun)\(n == 1 ? "" : "s")"
+        model.chosen.words(alsoDomains: model.draft.domains.count)
     }
 
     private func select(_ chosen: CommitmentLength) {

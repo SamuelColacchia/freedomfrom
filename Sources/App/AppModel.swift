@@ -29,14 +29,16 @@ final class AppModel {
     /// not hand back to the picker with its apps checked (ADR 0008, as amended).
     var selection = FamilyActivitySelection()
 
-    /// How many apps that selection names, minted the same way commit mints
-    /// them, so the number on screen is the number that will be enforced.
+    /// What that selection names, minted the same way commit mints it, so the
+    /// number on screen is the number that will be enforced — and split by kind,
+    /// because a whole category is one token and calling it `1 app` is a false
+    /// claim on the screen that asks for consent.
     ///
     /// Held rather than computed because every read of it encodes a token, and
     /// the two screens that show it redraw far more often than the picker
     /// closes. It moves only where `selection` does, and both places it moves
     /// are in this file.
-    private(set) var chosenTargetCount = 0
+    private(set) var chosen = ChosenTargets()
 
     /// Whether the record has been read yet. Until it has, the root draws the
     /// launch background and nothing else: routing on an empty record would
@@ -68,7 +70,7 @@ final class AppModel {
     /// The two halves of a target set live apart now — apps in this session,
     /// domains in the draft — so the question of whether there is anything to
     /// commit to is asked here, where both are in view.
-    var canCommit: Bool { chosenTargetCount > 0 || !record.draft.domains.isEmpty }
+    var canCommit: Bool { !chosen.isEmpty || !record.draft.domains.isEmpty }
 
     // MARK: - Launch and foreground
 
@@ -180,7 +182,7 @@ final class AppModel {
     /// The picker has closed. Nothing is written: apps are not part of the
     /// draft, so this changes only what this session is holding.
     func selectionChanged() {
-        chosenTargetCount = TargetHandles.mint(from: selection).count
+        chosen = TargetHandles.counts(from: selection)
     }
 
     func addDomain(_ typed: String) {
@@ -320,7 +322,7 @@ final class AppModel {
     func cleanSlate() {
         record.cleanSlate()
         selection = FamilyActivitySelection()
-        chosenTargetCount = 0
+        chosen = ChosenTargets()
         persist()
     }
 }
