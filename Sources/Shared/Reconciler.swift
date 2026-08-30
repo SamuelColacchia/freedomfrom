@@ -13,8 +13,8 @@ import FreedomFromPlatform
 ///
 /// Everything it does compares now against the stored absolute deadline. A
 /// commitment can end late, never early.
-struct Reconciler {
-    enum State {
+struct Reconciler: Sendable {
+    enum State: Sendable {
         /// The record could not be read. Touch nothing, register nothing, exit
         /// (ADR 0005): blind re-registration cannot tell "before first unlock"
         /// from "the access group does not work at all".
@@ -31,15 +31,31 @@ struct Reconciler {
         self.log = log
     }
 
-    /// `marking` runs on the record between reading it and acting on it. That
-    /// is where the app observes a break — a revoked authorization or a
-    /// reinstall — so the mark lands in the same read-modify-write as the
-    /// reconciliation rather than in a second one that could interleave.
+    /// The record, read and nothing else — no enforcement, no registration, and
+    /// deliberately no log line.
+    ///
+    /// It exists for the one caller that must route a screen before it can
+    /// afford the rest: a `SecItem` read is milliseconds, where applying the
+    /// shield and registering a window are daemon round-trips. `run` does the
+    /// authoritative read and logs it; this one must not, or every launch would
+    /// report reading the record twice.
+    func peek() -> Record? {
+        try? store.read()
+    }
+
+    /// `brokenObserved` carries what only a launch can see — a revoked
+    /// authorization, or a reinstall — into the same read-modify-write as the
+    /// reconciliation, rather than a second one that could interleave.
+    ///
+    /// It is a flag rather than a closure so the mark and its log line stay
+    /// here beside every other mark, and so this whole call can cross to a
+    /// background thread without carrying the app's state with it.
+    ///
     /// Discardable because the two callers want different things from it: the
     /// app renders the state it returns, and `Monitor` has nothing to render —
     /// it reconciles and exits, and the log line is its whole output.
     @discardableResult
-    func run(now: Date = Date(), marking: (inout Record) -> Void = { _ in }) -> State {
+    func run(now: Date = Date(), brokenObserved: Bool = false) -> State {
         let stored: Record?
         do {
             stored = try store.read()
@@ -51,7 +67,7 @@ struct Reconciler {
 
         let original = stored ?? .empty
         var record = original
-        marking(&record)
+        if brokenObserved, record.markBroken() { log.marked(.broken) }
 
         guard let active = record.active else {
             persist(record, ifChangedFrom: original)
@@ -105,12 +121,18 @@ struct Reconciler {
         return coverage
     }
 
-    func write(_ record: Record) {
+    /// Reports whether the write landed, because one caller cannot continue
+    /// without it: a commitment whose record did not persist would be a
+    /// countdown over nothing after the next launch.
+    @discardableResult
+    func write(_ record: Record) -> Bool {
         do {
             try store.write(record)
             log.recordWritten()
+            return true
         } catch {
             log.recordWriteFailed(status: Self.osStatus(error))
+            return false
         }
     }
 

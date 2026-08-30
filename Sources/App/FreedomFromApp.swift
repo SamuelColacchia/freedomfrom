@@ -29,15 +29,22 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            switch model.destination {
-            case .firstRun:
-                FirstRunView(model: model)
-            case .targets:
-                NavigationStack { TargetsView(model: model) }
-            case .countdown:
-                NavigationStack { CountdownView(model: model) }
-            case .ended:
-                EndedView(model: model)
+            if !model.hasReadRecord {
+                // The launch background, held until the record says which
+                // screen is true. Milliseconds, and the alternative is a flash
+                // of first run in front of a running commitment.
+                Quiet.background.ignoresSafeArea()
+            } else {
+                switch model.destination {
+                case .firstRun:
+                    FirstRunView(model: model)
+                case .targets:
+                    NavigationStack { TargetsView(model: model) }
+                case .countdown:
+                    NavigationStack { CountdownView(model: model) }
+                case .ended:
+                    EndedView(model: model)
+                }
             }
         }
         .task { await model.onLaunch() }

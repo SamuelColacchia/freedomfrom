@@ -21,16 +21,16 @@ final class AppModel {
         case ended
     }
 
-    private(set) var record: Record
+    private(set) var record = Record.empty
     private(set) var coverage = Coverage(resolved: 0, named: 0)
     var selection = FamilyActivitySelection()
 
-    init(record: Record = .empty) {
-        self.record = record
-    }
+    /// Whether the record has been read yet. Until it has, the root draws the
+    /// launch background and nothing else: routing on an empty record would
+    /// show first run to somebody mid-commitment.
+    private(set) var hasReadRecord = false
 
     private let log = Log(.app)
-    private let store = KeychainRecordStore()
     private let marker = InstallMarker()
     private var reconciler: Reconciler { Reconciler(log: log) }
 
@@ -68,6 +68,16 @@ final class AppModel {
         let reinstalled = !marker.isPresent
         marker.place()
 
+        // The read first and alone, so the right screen is on the glass before
+        // anything talks to a daemon.
+        let reconciler = reconciler
+        if let stored = await Task.detached(priority: .userInitiated, operation: {
+            reconciler.peek()
+        }).value {
+            record = stored
+        }
+        hasReadRecord = true
+
         await reconcile(reinstalled: reinstalled)
     }
 
@@ -85,15 +95,26 @@ final class AppModel {
         let authorized = Self.isAuthorized
         log.authorization(String(describing: AuthorizationCenter.shared.authorizationStatus))
 
-        apply(
-            reconciler.run { record in
-                guard record.active != nil, reinstalled || !authorized else { return }
-                if record.markBroken() { self.log.marked(.broken) }
-            })
+        apply(await offMainActor(brokenObserved: reinstalled || !authorized))
 
         guard record.active != nil, !Self.isAuthorized else { return }
         await requestAuthorization()
-        if Self.isAuthorized { apply(reconciler.run()) }
+        if Self.isAuthorized { apply(await offMainActor()) }
+    }
+
+    /// A reconciliation touches the Keychain, five `ManagedSettings` writes —
+    /// one of them device-wide — a shared-container file, and two
+    /// `DeviceActivityCenter` calls. None of those types is `@MainActor`, and
+    /// on a device every one of them is a daemon round-trip.
+    ///
+    /// Run on the main actor they blocked the first frame for about a minute
+    /// while a commitment was live, which looked exactly like an app that takes
+    /// a minute to launch. The work is unchanged; only the thread is.
+    private func offMainActor(brokenObserved: Bool = false) async -> Reconciler.State {
+        let reconciler = reconciler
+        return await Task.detached(priority: .userInitiated) {
+            reconciler.run(brokenObserved: brokenObserved)
+        }.value
     }
 
     private func apply(_ state: Reconciler.State) {
@@ -161,7 +182,13 @@ final class AppModel {
     /// with return, and when the app backgrounds — so a finished domain always
     /// survives an interruption and a half-typed one never does (ADR 0008).
     func persist() {
-        reconciler.write(record)
+        // Fire and forget. A draft write is the user's own edit landing, so
+        // nothing waits on it and nothing reads its result — and it is still a
+        // Keychain round-trip, which does not belong on the thread drawing the
+        // list it just changed.
+        let snapshot = record
+        let reconciler = reconciler
+        Task.detached(priority: .utility) { reconciler.write(snapshot) }
     }
 
     // MARK: - Commit
@@ -192,17 +219,19 @@ final class AppModel {
                 domains: domains
             ))
 
-        do {
-            try store.write(committed)
-            log.recordWritten()
-        } catch {
-            log.recordWriteFailed(status: Reconciler.osStatus(error))
-            return
-        }
+        // The write and then the same reconciliation every launch runs: it
+        // applies the shield and the filter, mirrors the deadline, and
+        // registers the first window. Off the main actor for the same reason
+        // launch is — this is a Keychain write followed by six daemon calls,
+        // and blocking here freezes the app the instant the hold completes,
+        // which reads as the hold having failed.
+        let reconciler = reconciler
+        let state = await Task.detached(priority: .userInitiated) { () -> Reconciler.State? in
+            guard reconciler.write(committed) else { return nil }
+            return reconciler.run(now: now)
+        }.value
 
-        // The same reconciliation every launch runs: it applies the shield and
-        // the filter, mirrors the deadline, and registers the first window.
-        apply(reconciler.run(now: now))
+        if let state { apply(state) }
     }
 
     // MARK: - Afterwards
@@ -244,8 +273,13 @@ final class AppModel {
 
             // Named in the log so a capture shows the run was not clean.
             log.storeMutation("hardware-pass release", landed: true)
-            try? store.write(shortened)
-            apply(reconciler.run())
+
+            let reconciler = reconciler
+            apply(
+                await Task.detached(priority: .userInitiated) {
+                    reconciler.write(shortened)
+                    return reconciler.run()
+                }.value)
         }
     #endif
 
