@@ -138,6 +138,10 @@ Store a selection, kill the app, relaunch, open the picker.
 
 One 15-minute commitment, one app target and one typed web domain. Nothing in this phase breaks anything.
 
+**All of Phase 2 has a wizard: `scripts/hardware-c1-c9`.** It installs a clean build, walks C1 through C9 in order, holds the fifteen minutes itself, prints the root-gated `log collect` line for a human to run in their own shell, reads the archive back, decides each verdict from the log and your answer together, fills in the nine rows below, and applies a bound amendment if one fires. Walk it rather than this page. Two things it does that a person doing this by hand will not: it computes what C7's coverage line should read instead of asking whether a number felt right, and it refuses to ask C2 through C7 at all once the deadline has passed, because an honest answer about an unenforced phone still makes a wrong row.
+
+Its verdict chain is exercised without a phone by `scripts/test-c1-c9-verdicts`. That chain runs once, at the end of the run, and a wrong branch in it costs the whole run — so it is tested rather than trusted.
+
 **C1. First run states what it costs.**
 **Green**: the consent sentence is visible before the hold, and the authorization prompt appears.
 

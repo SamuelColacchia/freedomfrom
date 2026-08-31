@@ -60,10 +60,19 @@ fabricated row is worse than an empty one, because every claim the app makes is
 reconciled against that table before TestFlight.
 
 `scripts/hardware-s2-s3` is the wizard for the two gates on the walking
-skeleton. It does the install, the log reads, the verdicts, the results table,
-and the bound amendment; the human supplies the taps and the one `sudo` line it
-prints rather than runs. Other phases have no wizard yet, and one built the same
-way is the right way to add them.
+skeleton, and `scripts/hardware-c1-c9` is the one for the clean run. Each does
+the install, the log reads, the verdicts, the results table, and the bound
+amendment; the human supplies the taps and the one `sudo` line it prints rather
+than runs. Phase 3 has no wizard yet, and one built the same way is the right
+way to add it.
+
+A wizard's verdict chain runs exactly once, at the end of a run nobody wants to
+walk twice, so it is tested rather than trusted:
+`scripts/test-c1-c9-verdicts` extracts the chain out of `hardware-c1-c9`
+between its `verdicts` markers and drives it against answer sets a real run
+produces — including the ones where the deadline runs out part-way, which is
+where it used to fall over. Keep that span pure, and add a case there before
+changing a branch in it.
 
 ## Agent skills
 
