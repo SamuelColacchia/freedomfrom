@@ -295,10 +295,14 @@ wait_until() {
 # table in place, found by its check id. Column 2 — what the check decides — is
 # never touched, and re-running overwrites rather than appending, so a repeated
 # run of an inconclusive check leaves one row and not three.
+#
+# A pipe in a cell becomes `&#124;` rather than `\|`. Both render as a pipe, but
+# a backslash-escaped one is still a pipe to awk, so a cell carrying one splits
+# into two on the next run and pushes the amendment into a seventh column.
 record_result() {
   local tmp
   tmp=$(mktemp)
-  CHECK="$1" RESULT="${2//|/\\|}" CELL="${3//|/\\|}" AMEND="${4//|/\\|}" \
+  CHECK="$1" RESULT="${2//|/\&#124;}" CELL="${3//|/\&#124;}" AMEND="${4//|/\&#124;}" \
     awk '
       BEGIN { FS = "|"; OFS = "|" }
       function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
