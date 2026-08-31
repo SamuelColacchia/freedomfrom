@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+#
+# Drives the verdict chain of `scripts/hardware-c1-c9` without a phone.
+#
+# The chain is the part of that wizard nobody can rehearse. It runs once, at the
+# end of a fifteen-minute run, after a root-gated `log collect`, and it is the
+# only thing that turns the run into rows. A branch that is wrong there costs
+# the whole run, and two of them cost more than that: C3a's red deletes the web
+# half of v1 and C6's red rewrites the app's one sentence about informed
+# consent. Neither is undone by noticing afterwards.
+#
+# So this extracts the real span out of the wizard, between its two `verdicts`
+# markers, and runs it under `set -euo pipefail` against answer sets a real run
+# produces. Nothing here is a copy of the logic; a fix that is not in the wizard
+# does not pass.
+#
+# What it cannot do: say whether a row is *true*. It says the chain reaches an
+# end, writes nine rows, and fires an amendment only where one is bound. Whether
+# "refused" meant refused is the human's, and that is check C3a's whole problem.
+
+set -uo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WIZARD="$REPO/scripts/hardware-c1-c9"
+SPAN=$(mktemp); trap 'rm -f "$SPAN"' EXIT
+
+awk '/^# >>> verdicts begin/ { on = 1; next } /^# <<< verdicts end/ { on = 0 } on' \
+  "$WIZARD" > "$SPAN"
+
+if [[ ! -s "$SPAN" ]]; then
+  printf 'could not find the verdict markers in %s\n' "$WIZARD" >&2
+  exit 2
+fi
+
+PASS=0; FAIL=0
+
+# The nine rows a complete run writes. A chain that stops early writes fewer,
+# which is what an unbound variable under `set -u` looks like from out here.
+ROWS="C1 C2 C3a C3b C4 C5 C6 C7 C8"
+
+# A run where nothing went wrong and the deadline never passed. Every case below
+# is this with something changed, so a case says only what it is about.
+CLEAN='
+C1_SCREEN=a C1_SENTENCE=y C1_PROMPT=y
+C2_SHIELD=a
+C3A_BLOCKED=y C3A_CONTROL=y
+C3B_CHROME=y C3B_FIREFOX=n C3B_BRAVE=- C3B_WEBVIEW=y
+C4_WWW=y C4_M=-
+C5_PRIVATE=y
+C6_DELETE=y C6_CLOCK=y
+C7_READS="2 of 2 covered"
+C8_LIFTED=y C8_DOMAIN_FREE=y C8_HISTORY=a
+C_DOMAIN=example.com CONTROL_DOMAIN=wikipedia.org
+enforcement=yes sc_woke=yes released=yes late_by=10 auth=approved
+cov="coverage resolved=1 of named=1" cov_resolved=1 cov_named=1
+'
+
+# chain SETUP prints one `ROW <id> = <result>` per row written and one
+# `AMEND <file>` per ADR amended, or nothing at all if it fell over.
+chain() {
+  (
+    set -euo pipefail
+    RECORDED=(); AMENDED=(); FOLLOWUP=(); EXPIRED=()
+    RED=""; GREEN=""; RESET=""; BOLD=""; DIM=""; YELLOW=""
+    record_result() { builtin printf 'ROW %s = %s\n' "$1" "$2"; }
+    amend_adr() { cat >/dev/null; builtin printf 'AMEND %s\n' "$1"; }
+    was_expired() {
+      local c
+      for c in ${EXPIRED[@]+"${EXPIRED[@]}"}; do [[ "$c" == "$1" ]] && return 0; done
+      return 1
+    }
+    expired_note() { record_result "$1" "Inconclusive, re-run"; }
+    note() { :; }; say() { :; }; warn() { :; }
+    printf() { :; }   # the chain's own progress printing, silenced
+    eval "$1"
+    source "$SPAN"
+  ) 2>&1
+}
+
+# case NAME SETUP [EXPECT…] — every case asserts the nine rows and a zero exit;
+# each EXPECT is an extra grep-style assertion, `+PATTERN` for present and
+# `-PATTERN` for absent.
+case_() {
+  local name="$1" setup="$2"; shift 2
+  local out rc problems=()
+  out=$(chain "$setup"); rc=$?
+
+  (( rc == 0 )) || problems+=("the chain exited $rc")
+
+  local id
+  for id in $ROWS; do
+    grep -qE "^ROW $id = " <<<"$out" || problems+=("no row for $id")
+  done
+
+  local want
+  for want in "$@"; do
+    case "$want" in
+      +*) grep -qF "${want#+}" <<<"$out" || problems+=("expected '${want#+}'") ;;
+      -*) grep -qF "${want#-}" <<<"$out" && problems+=("did not expect '${want#-}'") ;;
+    esac
+  done
+
+  if (( ${#problems[@]} == 0 )); then
+    PASS=$((PASS + 1))
+    printf '  ok    %s\n' "$name"
+  else
+    FAIL=$((FAIL + 1))
+    printf '  FAIL  %s\n' "$name"
+    local p; for p in "${problems[@]}"; do printf '          %s\n' "$p"; done
+    sed 's/^/          | /' <<<"$out"
+  fi
+}
+
+printf '\nThe verdict chain of scripts/hardware-c1-c9\n\n'
+
+printf 'A run that finished\n'
+case_ "everything green" "$CLEAN" \
+  "+ROW C1 = **Green**" "+ROW C2 = **Green**" "+ROW C3a = **Green**" \
+  "+ROW C5 = **Green**" "+ROW C6 = **Green**" "+ROW C7 = **Green**" \
+  "-AMEND"
+
+case_ "first run already consumed on this phone" "$CLEAN
+C1_SCREEN=c C1_SENTENCE= C1_PROMPT=" \
+  "+ROW C1 = Not observable" "-AMEND"
+
+printf '\nThe gate\n'
+case_ "C3a red on full evidence fires ADR 0006" "$CLEAN
+C3A_BLOCKED=n" \
+  "+ROW C3a = **Red**" "+AMEND 0006" \
+  "+ROW C3b = Not reached" "+ROW C4 = Not reached"
+
+case_ "C3a unblocked with C5 red is a bug, not the amendment" "$CLEAN
+C3A_BLOCKED=n C5_PRIVATE=n" \
+  "+ROW C3a = Inconclusive, re-run" "+ROW C5 = **Red**" "-AMEND"
+
+case_ "C3a unblocked with no network is not the amendment" "$CLEAN
+C3A_BLOCKED=n C3A_CONTROL=n" \
+  "+ROW C3a = Inconclusive, re-run" "-AMEND"
+
+case_ "C3a unblocked with nothing enforced is not the amendment" "$CLEAN
+C3A_BLOCKED=n enforcement=no" \
+  "+ROW C3a = Inconclusive, re-run" "-AMEND"
+
+printf '\nThe deadline runs out part-way\n'
+# check_open is called by C2, C3a, C3b, C4, C5, C6, C7 in that order, and the
+# clock only moves one way, so what a run produces is a suffix. C3b and C4 are
+# reached only when C3a came back green — when it did not they are skipped
+# without ever calling check_open, so they are absent from EXPIRED and their
+# answers are unset. That asymmetry is what crashed the chain.
+case_ "out of time at C5, after the gate came back unblocked" "$CLEAN
+C3A_BLOCKED=n
+unset C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
+EXPIRED=(C5 C6 C7)" \
+  "+ROW C3a = Inconclusive, re-run" "-AMEND"
+
+case_ "out of time at C5, after the gate came back green" "$CLEAN
+unset C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
+EXPIRED=(C3b C4 C5 C6 C7)" \
+  "+ROW C3a = **Green**" "+ROW C5 = Inconclusive, re-run" "-AMEND"
+
+case_ "out of time at C3a, so C3b and C4 were skipped rather than expired" "$CLEAN
+unset C3A_BLOCKED C3A_CONTROL C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
+EXPIRED=(C3a C5 C6 C7)" \
+  "+ROW C3a = Inconclusive, re-run" "+ROW C3b = Not reached" \
+  "+ROW C4 = Not reached" "-AMEND"
+
+case_ "out of time at C2, so nothing after it was asked" "$CLEAN
+unset C2_SHIELD C3A_BLOCKED C3A_CONTROL C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
+EXPIRED=(C2 C3a C5 C6 C7)" \
+  "+ROW C2 = Inconclusive, re-run" "-AMEND"
+
+case_ "out of time at C6, with the gate green" "$CLEAN
+unset C6_DELETE C6_CLOCK C7_READS
+EXPIRED=(C6 C7)" \
+  "+ROW C6 = Inconclusive, re-run" "-AMEND"
+
+printf '\nThe consent sentence\n'
+case_ "both restrictions no-op" "$CLEAN
+C6_DELETE=n C6_CLOCK=n" \
+  "+ROW C6 = **Red**" "+AMEND 0003"
+
+case_ "only the deletion claim fails" "$CLEAN
+C6_DELETE=n" \
+  "+ROW C6 = **Red**" "+AMEND 0003"
+
+case_ "only the clock claim fails" "$CLEAN
+C6_CLOCK=n" \
+  "+ROW C6 = **Red**" "+AMEND 0003"
+
+case_ "an unanswered half does not rewrite the sentence" "$CLEAN
+C6_CLOCK=" \
+  "+ROW C6 = Inconclusive, re-run" "-AMEND"
+
+printf '\nCoverage, which is arithmetic\n'
+case_ "the screen agrees with the log plus one domain" "$CLEAN" \
+  "+ROW C7 = **Green**"
+
+case_ "the screen is one short" "$CLEAN
+C7_READS=\"1 of 2 covered\"" \
+  "+ROW C7 = **Red**"
+
+case_ "a degraded commitment reads 1 of 2 plus the domain" "$CLEAN
+C7_READS=\"2 of 3 covered\" cov=\"coverage resolved=1 of named=2\" cov_resolved=1 cov_named=2" \
+  "+ROW C7 = **Green**"
+
+case_ "no coverage line to check the screen against" "$CLEAN
+cov= cov_resolved= cov_named=" \
+  "+ROW C7 = Inconclusive, re-run"
+
+printf '\nThe release\n'
+case_ "no release was logged" "$CLEAN
+released=no late_by=" \
+  "+ROW C8 = **Red**"
+
+case_ "released, but the shield was still up" "$CLEAN
+C8_LIFTED=n" \
+  "+ROW C8 = Inconclusive, re-run"
+
+# A release unsets the shield and the filter in one call, so half of one is not
+# a late release — it is a mutation that returned while the setting still
+# governs the device. The answer used to be read only to decorate a green row.
+case_ "released, the app came back and the domain did not" "$CLEAN
+C8_DOMAIN_FREE=n" \
+  "+ROW C8 = Inconclusive, re-run"
+
+case_ "released, and the domain answer went unobserved" "$CLEAN
+C8_DOMAIN_FREE=" \
+  "+ROW C8 = Inconclusive, re-run"
+
+case_ "released, but the history row reads broken" "$CLEAN
+C8_HISTORY=b" \
+  "+ROW C8 = Inconclusive, re-run"
+
+printf '\n%s passed, %s failed\n\n' "$PASS" "$FAIL"
+(( FAIL == 0 ))
