@@ -67,6 +67,8 @@ This does not give the app a voice. ADR 0005 forbids the app telling the user th
 
 Not a green checklist — an all-green gate would deadlock on questions nobody can answer, like what Brave does with a `.specific` filter. The gate is that **both runs have happened and the app's claims have been reconciled against what they showed**. A red result changes what the app says, not whether it ships.
 
+**The blocking checks are the exception, and there are three.** S1 and S2 change the architecture when red, which is why they run on the skeleton before v1 is written. C3a — whether a `.specific` filter refuses a typed domain in Safari at all — is the third, and it could not join them, because the skeleton had no filter to run. It is a gate for the same reason they are: red there deletes the web half of v1 rather than rewording it, and it is the only row in the pass that exercises `blockedByFilter`.
+
 This matters most for one check. ADR 0003 rests all of informed consent on a single first-run sentence. If `denyAppRemoval` silently no-ops under `.individual`, that sentence claims a restriction that does not exist — a known unknown for the developer, and a false claim for a stranger.
 
 ## Considered options

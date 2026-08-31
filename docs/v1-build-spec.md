@@ -289,7 +289,8 @@ Decided by [ADR 0006](./adr/0006-web-targets-block-by-filter-not-by-shield.md).
 
 - Released by setting the shield to `nil` and the filter to `.none`, on the same one named store.
 - **Safari Private Browsing is off while a filter is applied.** The targets screen says so. First run does not, because it is conditional on having typed a domain.
-- **The app names no browser.** Which browsers a `.specific` filter actually covers is undocumented; hardware check C3 is a survey, and the targets step names only what it observed.
+- **The app names no browser.** Which browsers a `.specific` filter actually covers is undocumented; hardware check C3b is a survey, and the targets step names only what it observed.
+- **Whether the filter blocks at all is check C3a, and it is a gate.** `blockedByFilter` is written once and never read back, so nothing else in the hardware pass exercises it and half the blocking surface rests on that one row. Red there and web targets leave v1 — the bound amendment is deletion, not a fallback to picker tokens on the shield.
 - **A commitment exists if its *enforcement* applied, not if its shield did.** A website-only commitment is first-class. Nothing is written if enforcement fails to apply; the app re-requests authorization rather than reporting an error.
 - **A website-only commitment never wakes `ShieldConfig`**, leaving two of the three reconciliation points. The release still arrives late rather than early.
 
@@ -440,7 +441,7 @@ The device half is manual, and it lives at [`docs/hardware-smoke-checklist.md`](
 
 ### What gates a TestFlight invite
 
-**Not a green checklist.** An all-green gate would deadlock on questions nobody can answer, like what Brave does with a `.specific` filter. The gate is that **both runs have happened and the app's claims have been reconciled against what they showed.** A red result changes what the app says, not whether it ships.
+**Not a green checklist.** An all-green gate would deadlock on questions nobody can answer, like what Brave does with a `.specific` filter. The gate is that **both runs have happened and the app's claims have been reconciled against what they showed.** A red result changes what the app says, not whether it ships — with one exception. C3a asks whether the filter blocks anything at all, and red there changes what v1 *contains*: the web half comes out.
 
 This matters most for C6. Informed consent rests entirely on one first-run sentence; if `denyAppRemoval` silently no-ops under `.individual`, that sentence claims a restriction that does not exist — a known unknown for the developer, and a false claim for a stranger.
 
@@ -471,7 +472,7 @@ Carried from the map, so nobody helpfully adds one of these:
 
 **Every enforcement claim is conditional on "while authorized."** `.individual` authorization is user-revocable in fifteen seconds behind a Face ID scan, and nothing short of supervision closes that. No copy anywhere in the app may exceed the honest claim at the top of this document.
 
-**What only hardware can settle**, and which no copy may claim until it does: which browsers a `.specific` filter covers; whether a bare domain covers its subdomains; whether `denyAppRemoval` and `requireAutomaticDateAndTime` bite under `.individual`; whether an unresolvable token is detectable at all; whether `requestAuthorization` re-prompts from `.denied`; and whether a sysdiagnose contains this subsystem's lines.
+**What only hardware can settle**, and which no copy may claim until it does: whether a `.specific` filter blocks a typed domain at all; which browsers it covers beyond Safari; whether a bare domain covers its subdomains; whether `denyAppRemoval` and `requireAutomaticDateAndTime` bite under `.individual`; whether an unresolvable token is detectable at all; whether `requestAuthorization` re-prompts from `.denied`; and whether a sysdiagnose contains this subsystem's lines.
 
 **The prototype is thrown away, not promoted.** [`prototype/v1-commit-flow`](https://github.com/SamuelColacchia/freedomfrom/tree/prototype/v1-commit-flow) is a single throwaway HTML file written under prototype constraints — no tests, no error handling, no persistence. It is the primary source for the *voice*, and nothing else.
 
