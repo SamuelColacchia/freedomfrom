@@ -329,10 +329,33 @@ expired_note() {
 # Unlike ask, it never offers the previous run's answer as a default. A stored
 # answer to "was it refused?" is the shortest path there is to a row nobody
 # looked at, and keeping those out of the table is what this whole procedure is.
+#
+# It also re-asks a blank, until there is nobody left to ask. Every verdict
+# below reads its answer against `^[Yy]`, so an empty string is not a missing
+# answer to those tests — it is a "no", and at C6 a "no" fires an ADR 0003
+# amendment that rewrites the app's only sentence about informed consent. One
+# stray Enter should not be able to do that.
+#
+# On EOF it gives up and leaves the answer empty rather than spinning, so the
+# blank can still reach a verdict. That is why the two checks with a bound
+# amendment — C3a and C6 — test for an empty answer themselves and record
+# inconclusive, rather than trusting this to have caught it.
 observe() {
   local key="$1" prompt="$2" input
-  printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
-  read -r input || true
+  while :; do
+    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+    if ! read -r input; then
+      # EOF: there is no one left to ask. Leave it empty rather than spin, and
+      # let the verdict stage record whatever it records for an unobserved
+      # check — which, for the two that can fire an amendment, is inconclusive.
+      warn "no more input, so this is left unanswered."
+      input=""
+      break
+    fi
+    [[ -n "$input" ]] && break
+    warn "That needs an answer. A blank reads as 'no' to every test below, and a"
+    warn "row written from one is a row nobody looked at."
+  done
   printf -v "$key" '%s' "$input"
   write_env "$key" "$input"
 }
@@ -849,6 +872,11 @@ note "last coverage line:         ${cov:-none}"
 say ""
 pause
 
+# >>> verdicts begin — everything to the matching marker is pure: it reads the
+# answers and the parsed log facts, and calls record_result and amend_adr. No
+# prompts, no ssh, no clock. scripts/test-c1-c9-verdicts extracts exactly this
+# span and drives it, so the chain is exercised without a phone. Keep it pure.
+
 # ── C1 ────────────────────────────────────────────────────────────────────
 if [[ "$C1_SCREEN" != a ]]; then
   record_result C1 "Not observable" \
@@ -915,6 +943,21 @@ elif [[ "$C3A_BLOCKED" =~ ^[Yy] ]]; then
   record_result C3a "**Green**" \
     "Safari refused \`$C_DOMAIN\` while the control \`$CONTROL_DOMAIN\` loaded normally, with \`store mutation enforcement landed=true\` in the archive" \
     "None"
+elif [[ -z "${C5_PRIVATE:-}" ]]; then
+  # C5 is the other half of this gate's evidence, and the run did not get it:
+  # normally because the deadline passed before C5 was reached, so it was never
+  # asked.
+  #
+  # Falling through to the red branch on that would fire ADR 0006's amendment
+  # and delete the web half of v1 on a run that never looked at the one
+  # observation separating "the filter landed and does nothing" from "the
+  # policy never reached the device". A gate scored on half its evidence is
+  # worse than an unscored gate, because the amendment is not reversible by
+  # noticing later.
+  record_result C3a "Inconclusive, re-run" \
+    "\`$C_DOMAIN\` loaded and the control \`$CONTROL_DOMAIN\` loaded, but C5 was never reached, so nothing separates a filter that landed and blocks nothing from a policy that never reached the device. The gate is not scored on half its evidence" \
+    "None — not a result"
+  FOLLOWUP+=("C3a needs a re-run that reaches C5: the gate cannot be scored without it")
 elif [[ "$C5_PRIVATE" =~ ^[Nn] ]]; then
   # Applied, but Private Browsing is still there — so the policy did not land on
   # the device at all, whatever the call returned. `landed=true` means the call
@@ -966,6 +1009,13 @@ fi
 # ── C3b ───────────────────────────────────────────────────────────────────
 if was_expired C3b; then
   expired_note C3b
+elif was_expired C3a; then
+  # C3a itself was reached late, so the survey was skipped rather than run out
+  # of time on its own. It never called check_open, so it is not in EXPIRED and
+  # C3A_BLOCKED was never set.
+  record_result C3b "Not reached" \
+    "C3a was reached after the deadline and was not asked, so there was no coverage to survey" \
+    "None — not a result"
 elif [[ "$C3A_BLOCKED" =~ ^[Yy] && "$C3A_CONTROL" =~ ^[Yy] ]]; then
   browsers="Safari **blocked**"
   for pair in "Chrome:$C3B_CHROME" "Firefox:$C3B_FIREFOX" "Brave:$C3B_BRAVE" "in-app WKWebView:$C3B_WEBVIEW"; do
@@ -987,6 +1037,10 @@ fi
 # ── C4 ────────────────────────────────────────────────────────────────────
 if was_expired C4; then
   expired_note C4
+elif was_expired C3a; then
+  record_result C4 "Not reached" \
+    "C3a was reached after the deadline and was not asked, so there was no matching rule to probe" \
+    "None — not a result"
 elif [[ "$C3A_BLOCKED" =~ ^[Yy] && "$C3A_CONTROL" =~ ^[Yy] ]]; then
   case "$C4_WWW" in
     [Yy]*) www="\`www.$C_DOMAIN\` was refused" ;;
@@ -1033,6 +1087,15 @@ fi
 witness="The human's observation. There is no read-back of effective state (ADR 0005), so no log line corroborates either half"
 if was_expired C6; then
   expired_note C6
+elif [[ -z "${C6_DELETE:-}" || -z "${C6_CLOCK:-}" ]]; then
+  # Both halves are the human's eyes and nothing else, so an unanswered half has
+  # no log line to fall back on. It reads as `^[Yy]` failing, which is a
+  # refusal that did not happen — and that scores red and rewrites the app's
+  # one sentence about informed consent.
+  record_result C6 "Inconclusive, re-run" \
+    "One or both halves went unanswered. This check has no log line to fall back on — there is no read-back of effective state anywhere in \`ManagedSettings\` (ADR 0005) — so an unanswered half is not a failed one" \
+    "None — not a result"
+  FOLLOWUP+=("C6 was not fully answered, and it is the check informed consent rests on")
 elif [[ "$C6_DELETE" =~ ^[Yy] && "$C6_CLOCK" =~ ^[Yy] ]]; then
   record_result C6 "**Green**" \
     "Deleting another app was refused, and 'Set Automatically' could not be switched off. $witness" "None"
@@ -1136,10 +1199,20 @@ else
 fi
 
 # ── C8 ────────────────────────────────────────────────────────────────────
-if [[ "$released" == yes && "$C8_LIFTED" =~ ^[Yy] && "$C8_HISTORY" == a ]]; then
-  detail="Enforcement lifted with the app closed, and the history row reads completed. \`released late_by_seconds=$late_by\` in the archive"
-  [[ "$C8_DOMAIN_FREE" =~ ^[Yy] ]] && detail="$detail. The domain loaded again afterwards"
-  record_result C8 "**Green**, late by ${late_by}s" "$detail" "None"
+if [[ "$released" == yes && "$C8_LIFTED" =~ ^[Yy] && "$C8_HISTORY" == a && "$C8_DOMAIN_FREE" =~ ^[Yy] ]]; then
+  record_result C8 "**Green**, late by ${late_by}s" \
+    "Enforcement lifted with the app closed and the domain loaded again, and the history row reads completed. \`released late_by_seconds=$late_by\` in the archive" \
+    "None"
+elif [[ "$released" == yes && "$C8_LIFTED" =~ ^[Yy] && "$C8_HISTORY" == a ]]; then
+  # The app came back and the domain did not. `releaseEverything` unsets the
+  # shield and the filter in one call, so a half-lifted release is the same
+  # shape as C5 red: the mutation returned and the setting still governs the
+  # device. Safari also caches the block page, which is an innocent explanation
+  # of the same screen — so this is a re-run rather than a red.
+  record_result C8 "Inconclusive, re-run" \
+    "\`released late_by_seconds=$late_by\` is in the archive and the app opened normally, but \`$C_DOMAIN\` was still refused afterwards. Release unsets the shield and the filter in one call, so either the filter did not lift or Safari served a cached block page" \
+    "None — not a result"
+  FOLLOWUP+=("C8 half-lifted: the app came back and the domain did not. Re-run against a cleared Safari cache, and if it holds, the release is not clearing blockedByFilter")
 elif [[ "$released" == no ]]; then
   record_result C8 "**Red**" \
     "No \`released late_by_seconds=\` line in the archive$([[ "$C8_LIFTED" =~ ^[Yy] ]] && echo ", though the app opened normally — so something lifted the shield without logging it")" \
@@ -1148,10 +1221,13 @@ elif [[ "$released" == no ]]; then
 else
   detail="\`released late_by_seconds=$late_by\` is in the archive"
   [[ ! "$C8_LIFTED" =~ ^[Yy] ]] && detail="$detail, but the app was still shielded on the next open"
+  [[ ! "$C8_DOMAIN_FREE" =~ ^[Yy] ]] && detail="$detail, and \`$C_DOMAIN\` was still refused"
   [[ "$C8_HISTORY" == b ]] && detail="$detail, and the history row reads broken rather than completed"
   [[ "$C8_HISTORY" == c ]] && detail="$detail, and no history row was written"
   record_result C8 "Inconclusive, re-run" "$detail" "None — not a result"
 fi
+
+# <<< verdicts end
 
 pause
 
