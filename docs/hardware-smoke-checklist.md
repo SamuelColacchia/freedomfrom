@@ -4,7 +4,7 @@ Everything about freedomfrom that only a real device can answer, in the order a 
 
 Read this before starting:
 
-- **Two checks can block.** S1 and S2 change the architecture when red, so they run on the walking skeleton, before v1 is written. Everything else fires a pre-bound amendment instead — a decision, not a reopening.
+- **Three checks can block.** S1 and S2 change the architecture when red, so they run on the walking skeleton, before v1 is written. C3a is the third and could not join them, because the skeleton had no filter to run; it sits in the clean run, and red there deletes the web half of v1 rather than rewording it. Everything else fires a pre-bound amendment instead — a decision, not a reopening.
 - **Every check names its amendment.** If one goes red, apply the amendment written beside it and amend the ADR. Do not reopen the decision.
 - **Order is not arbitrary.** The destructive checks live in their own commitment because a break contaminates every later observation, and inside that run the revoke comes before the delete, because a working `denyAppRemoval` prevents deleting the app.
 - **Honest scope.** These prove what happened on one device, on one OS build, once. Nothing here licenses a general claim.
@@ -145,13 +145,22 @@ One 15-minute commitment, one app target and one typed web domain. Nothing in th
 Open the app target.
 **Green**: Apple's shield replaces it. `app` logs enforcement applied with a resolved-of-named count.
 
-**C3. Which browsers does the filter actually cover?**
-Load the blocked domain in Safari, then Chrome, Firefox, Brave, and an in-app `WKWebView` in any app that has one. Record each separately.
+**C3a. Does the filter block anything at all? (gate)**
+Load the blocked domain in Safari.
+**Green**: Safari refuses it and shows Apple's page.
+**Red → amendment**: **web targets leave v1.** The targets step keeps the app picker and loses the domain field, the history loses the only thing it can say in words, and `blockedByFilter` and the 50-domain rule come out of `Enforcement`. [ADR 0006](./adr/0006-web-targets-block-by-filter-not-by-shield.md) is amended: the option it listed as not offered becomes the outcome. **Picker tokens on the shield are not the fallback** — ADR 0006 rejected them on cost, and their own cold-site selection behaviour is unverified, so a red gate must not put a second unproven mechanism into v1 on the strength of one bad afternoon.
+
+> **A gate, because it is the only check on this page that exercises the filter at all.** `blockedByFilter` is written in one place, never read back, and C2 covers the shield instead — so half the blocking surface rests on this one row. A red here is not a browser-coverage result. It is the mechanism ADR 0006 chose being inert, which changes what v1 contains rather than what it says, and that is the distinction S1 and S2 are gates for. It could not join them in Phase 1 because the skeleton had no filter to run.
+
+> **Read C5 alongside it.** Private Browsing switching off is caused by the policy applying, not by it blocking. C3a red with C5 green means the filter landed and does nothing, which is the amendment above. C3a red with C5 red means nothing applied at all, which is a bug in `Enforcement` rather than a fact about iOS — fix it and re-run rather than amending anything.
+
+**C3b. Which other browsers does it cover?**
+Only if C3a is green. Load the same domain in Chrome, Firefox, Brave, and an in-app `WKWebView` in any app that has one. Record each separately.
 **Green**: nothing to be green about — this is a survey. Write down exactly which ones blocked.
 **Amendment either way**: the targets step names only the browsers observed. If only Safari blocked, it says Safari. It never generalizes. ADR 0006 leaves that half of the line empty until this is filled.
 
 **C4. Does a bare domain cover its subdomains?**
-Having typed `example.com`, try `www.example.com` and `m.example.com`.
+Only if C3a is green. Having typed `example.com`, try `www.example.com` and `m.example.com`.
 **Amendment either way**: if subdomains are not covered, canonicalization stands unchanged (ADR 0006 refuses to guess at matching rules) and the user types each host. If they are covered, that becomes a claim the targets step may make.
 
 **C5. Private Browsing is off while the filter holds.**
@@ -216,7 +225,8 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 | S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
 | C1 | Consent sentence and prompt appear | | | |
 | C2 | The shield applies | | | |
-| C3 | Which browsers the filter covers | | | |
+| C3a | The filter blocks at all (gate) | | | |
+| C3b | Which other browsers it covers | | | |
 | C4 | Bare domain versus subdomains | | | |
 | C5 | Private Browsing off while filtering | | | |
 | C6 | Restrictions bite under `.individual` | | | |
@@ -228,4 +238,4 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 | X4 | Unresolvable tokens are detectable | | | |
 | X5 | History and clean slate | | | |
 
-**Before the first TestFlight invite**: both runs done, and every claim the app makes reconciled against what they showed. Not every check green — nobody can prove what Brave does with a filter, and the app already handles that by naming no browser.
+**Before the first TestFlight invite**: both runs done, and every claim the app makes reconciled against what they showed. Not every check green — nobody can prove what Brave does with a filter, and the app already handles that by naming no browser. **C3a is the exception**, because a gate that goes red changes what ships rather than what is claimed.

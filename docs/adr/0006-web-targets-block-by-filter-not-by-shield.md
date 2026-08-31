@@ -37,11 +37,15 @@ This supersedes the web-domain clause of ADR 0003. That clause's reason — a ty
 
 **Saying nothing about Private Browsing (rejected).** It is minor, and for this product arguably desirable. Rejected because it would have the app quietly change a Safari setting the user never asked about, which inverts ADR 0001's stance of naming exits rather than concealing them.
 
-**Dropping web targets from v1 until hardware confirms coverage (not offered).** Nothing about the choice waits on hardware: both representations are expressible today, and the unverified parts are smoke-test items, not decision inputs. Web targets are half the blocking surface fixed during charting.
+**Dropping web targets from v1 until hardware confirms coverage (not offered as a decision — bound as the fallback).** Nothing about the *choice* waits on hardware: both representations are expressible today, and the unverified parts are smoke-test items, not decision inputs. Web targets are half the blocking surface fixed during charting.
+
+What does wait on hardware is whether the mechanism chosen here does anything at all, and that is now smoke check **C3a**, a gate: a typed domain loaded in Safari on a device. If it is not refused, **web targets leave v1** — the domain field goes off the targets step, the history loses the only thing it can say in words, and `blockedByFilter` and the 50-domain rule come out of enforcement. That outcome is bound in advance so a red gate is a decision rather than a reopening, which is the whole convention of the hardware pass.
+
+**The fallback is deletion, not the rejected option above.** Picker tokens were rejected on what they cost, and their cold-site selection is itself UNVERIFIED, so swapping an inert mechanism for an unproven one while standing over a phone is how a smoke run turns into a redesign. Deleting the surface is a decision that can be made today, which is exactly what makes it bindable today.
 
 ## Consequences
 
-- **Two items join the hardware smoke checklist**, both of which the app is now forbidden to guess about: which browsers a `.specific` filter actually covers, and whether a bare domain covers its subdomains. Until they are answered the app blocks what it was told to block and claims nothing.
+- **Three items join the hardware smoke checklist**, all of which the app is now forbidden to guess about: whether a `.specific` filter blocks a typed domain at all, which browsers it covers beyond Safari, and whether a bare domain covers its subdomains. Until they are answered the app blocks what it was told to block and claims nothing. **The first of them is a gate, because nothing else in the pass exercises the filter** — `blockedByFilter` is written once and never read back, so one row carries half the blocking surface.
 - **`FreedomFromKit` gains domain canonicalization and the 50-domain rule.** Both are pure string logic with no device dependency, so they join deadline reconciliation and coverage computation as things testable headless on the Mac — which matters while hardware access is still zero.
 - **The commitment history can name web targets in words.** It is the only readable thing in a record otherwise made of counts, and it is now permanent rather than conditional on an unverified API.
 - **Selecting nothing but websites is a first-class case.** ADR 0005's rule that the commit screen is unreachable with nothing selected is unchanged; what changed is that one typed domain is enough to reach it.
