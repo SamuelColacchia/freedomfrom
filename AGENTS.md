@@ -76,11 +76,15 @@ before changing a branch in it.
 **Two branches that look the same from outside need a marker, not an
 assertion on their words.** An expired check and a never-observed one both write
 "Inconclusive, re-run", so a case asserting only that passes whichever branch
-ran, and a deleted `was_expired` guard survives a green suite. Both harnesses
-print an `EXPIRED-ROW` line from their `expired_note` stub and assert on that
-instead. Any future pair of branches that agree on their output wants the same
-treatment — the way to find out is to delete a guard and check the suite goes
-red.
+ran, and a deleted `was_expired` guard survives a green suite. Each test file
+stubs `expired_note` to print an `EXPIRED-ROW` line, and its cases assert on
+that instead of on the words.
+
+**The marker lives in the stub, not in the wizard.** The wizards' own
+`expired_note` writes a table row and nothing else; a marker there would print
+noise at a human mid-run. Any future pair of branches that agree on their
+output wants the same treatment, and the way to check it works is to delete a
+guard and watch the suite go red.
 
 ## Agent skills
 

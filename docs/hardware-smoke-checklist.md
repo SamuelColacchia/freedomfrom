@@ -219,9 +219,11 @@ Only possible after X1, because a working `denyAppRemoval` blocks it. Delete the
 On that same relaunch, compare the resolved count against the named count — **and open the blocked app.** Two readings, because the count alone cannot fail.
 **Green**: coverage shrank. A token churned across the reinstall and the app noticed, so degradation is reachable.
 **Inconclusive**: coverage is full *and* the shield is still up. Nothing churned, so this run produced no unresolvable token and says nothing about whether one would be detected. Re-run; it is not a red.
-**Red → amendment**: coverage is full and **the shield is gone**. The token stopped resolving and the count did not notice, which is the only shape in which undetectability is observable at all. The whole degradation path is then unreachable: coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
+**Red → amendment**: coverage is full and **the shield is gone**, *and the archive holds `store mutation enforcement landed=true` after the reinstall.* The token stopped resolving and the count did not notice, which is the only shape in which undetectability is observable at all. The whole degradation path is then unreachable: coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
 
 > **The count cannot fail on its own, which is why the shield is read beside it.** A churned token mints a different handle, so the app learns of it by minting and comparing — and a full count is equally consistent with "nothing churned" and "everything churned invisibly". Only enforcement can tell those apart, because a shield that is gone while the count says one-of-one is the app being wrong out loud.
+
+> **The enforcement clause on that red is load-bearing, so do not score this row by eye.** An unauthorized phone shields nothing, so if X2 came back red the shield is missing for a reason that has nothing to do with tokens — and a red scored on that would take degradation out of v1 on the strength of an unrelated result. `scripts/hardware-x1-x5` refuses the red when enforcement never applied. A person reading only the line above would not.
 
 **X5. History and clean slate.**
 Let it reach its deadline. Check the history row. Then run a clean slate.
