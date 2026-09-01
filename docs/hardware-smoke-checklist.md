@@ -145,6 +145,8 @@ Its verdict chain is exercised without a phone by `scripts/test-c1-c9-verdicts`.
 **C1. First run states what it costs.**
 **Green**: the consent sentence is visible before the hold, and the authorization prompt appears.
 
+> **It can only be taken on a device that has never run the app**, so it is not really Phase 2's to schedule. First run shows once ever, the Keychain record outlives app deletion (ADR 0002), and clean slate deliberately does not reset it (ADR 0008) — there is no route back. `scripts/hardware-x1-x5` offers it as its own first stage, because that wizard is the one that would otherwise consume first run without asking.
+
 **C2. The shield applies.**
 Open the app target.
 **Green**: Apple's shield replaces it. `app` logs enforcement applied with a resolved-of-named count.
@@ -193,6 +195,8 @@ One longer commitment, deliberately broken. Everything here marks it, which is w
 
 **All of Phase 3 has a wizard: `scripts/hardware-x1-x5`.** Same shape as the clean run's: it installs, walks X1 through X5 in the forced order, prints the root-gated `log collect` line for a human to run in their own shell, reads the archive back, decides each verdict from the log and your answer together, and fills in the five rows below. Walk it rather than this page. Its verdict chain is exercised without a phone by `scripts/test-x1-x5-verdicts`.
 
+> **It takes C1 first, when the device has never run the app.** Not because C1 is Phase 3's, but because this wizard is what destroys the chance to take it: its next stage has you tap through Targets, and the first launch consumes first run for the life of the device. So the offer belongs here, ahead of the thing that would burn it. On a device that has already run freedomfrom the stage says so and **leaves the row exactly as it is** — including a green another device earned, which "Not observable" written over the top of would lose for good.
+
 > **What #54 takes off this page, and what it leaves.** The app marks a running commitment broken on *any* cold launch, because it judges on an `authorizationStatus` that has not settled yet. So on this run the commitment will already be marked before anybody revokes anything, and **no check here can attribute a mark to the thing it was supposed to be testing.** Three claims survive that, and Phase 3 is now built around them rather than around the mark: that a break never moves a deadline, that the mark is recorded once rather than once per launch, and that a reinstall finds the commitment and re-arms. Everything below is worded so a green means one of those and never "the revoke did it".
 
 **X1. Revoke authorization.**
@@ -238,6 +242,8 @@ Let it reach its deadline. Check the history row. Then run a clean slate.
 ## Results
 
 Fill in and commit. A red result should link the ADR amendment it triggered.
+
+**Rows in this table do not all come from the same device, so each says which one it came from.** The clean run was walked on an iPhone; C1 can only be taken on a device that has never run the app, which by then no iPhone here was. Most of these checks are about the app and read the same anywhere, but some are about iOS rather than about freedomfrom — what a revoke leaves `authorizationStatus` as is the system's behaviour, not the app's — and a row that does not name its device is a row the next reader will assume came from the other one.
 
 | Check | What it decides | Result | Evidence | Amendment fired |
 |---|---|---|---|---|

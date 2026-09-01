@@ -49,6 +49,8 @@ ROWS="X1 X2 X3 X4 X5"
 # The mark lands before the revoke, which is #54 and is the expected shape until
 # that is fixed.
 CLEAN='
+C1_SCREEN=b C1_SENTENCE= C1_PROMPT=
+DEVICE_LABEL="iPhone 14 Pro Max, iPhone 26.6.1"
 X1_RUNNING_BEFORE=y X1_COVERAGE_BEFORE="1 of 1 covered" X1_RUNNING_AFTER=y
 X2_PROMPT=y X2_GRANTED=y
 X3_DELETED=y X3_SCREEN=a
@@ -130,6 +132,31 @@ printf 'A run that finished\n'
 case_ "everything the checklist expects" "$CLEAN" \
   "+ROW X1 = **Green**" "+ROW X2 = **Green**" "+ROW X3 = **Green**" \
   "+ROW X5 = **Green**" "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+printf '\nC1, the row this wizard would otherwise burn\n'
+# C1 shows once ever and nothing resets it, so a green earned on a fresh device
+# is unrepeatable anywhere. The guard that matters is the one that leaves the
+# row alone: a later run on a used device must not overwrite it.
+case_ "a fresh device takes C1" "$CLEAN
+C1_SCREEN=a C1_SENTENCE=y C1_PROMPT=y
+DEVICE_LABEL=\"iPad Pro 13-inch (M4), iPad 26.6\"" \
+  "+ROW C1 = **Green**" "-AMEND"
+
+case_ "a used device leaves the row alone" "$CLEAN
+C1_SCREEN=b" \
+  "-ROW C1 = "
+
+case_ "a device mid-commitment leaves the row alone" "$CLEAN
+C1_SCREEN=c" \
+  "-ROW C1 = "
+
+case_ "no sentence on the first-run screen is a red, not a silence" "$CLEAN
+C1_SCREEN=a C1_SENTENCE=n C1_PROMPT=y" \
+  "+ROW C1 = **Red**" "-AMEND"
+
+case_ "first run reached but no authorization prompt" "$CLEAN
+C1_SCREEN=a C1_SENTENCE=y C1_PROMPT=n" \
+  "+ROW C1 = **Red**" "-AMEND"
 
 printf '\nX1a, which is the fact the run exists to get\n'
 # The one output nothing in the repo can produce without a phone. Both states

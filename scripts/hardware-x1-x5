@@ -213,7 +213,7 @@ finish() {
 # observe.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=12
+TOTAL_STAGES=13
 
 # Overridable in the same names scripts/mac uses, so one export covers both.
 HOST="${FREEDOMFROM_MAC_HOST:-mac}"
@@ -510,16 +510,23 @@ else
   exit 1
 fi
 
-if [[ -z "$DEVICE_UDID" ]]; then
-  DEVICE_UDID=$(
-    remote_sh <<EOF 2>/dev/null || true
+# Asked once, read twice. The UDID is what `log collect` needs; the model and
+# OS are what the rows need, now that this checklist holds observations from
+# more than one device and a reader cannot tell which row came from where.
+device_details=$(
+  remote_sh <<EOF 2>/dev/null || true
 xcrun devicectl device info details --device $DEVICE \\
-  --json-output /tmp/freedomfrom-device.json >/dev/null 2>&1 &&
-  plutil -extract result.hardwareProperties.udid raw -o - /tmp/freedomfrom-device.json
+  --json-output /tmp/freedomfrom-device.json >/dev/null 2>&1 || exit 1
+for k in hardwareProperties.udid deviceProperties.marketingName \\
+         hardwareProperties.deviceType deviceProperties.osVersionNumber; do
+  plutil -extract result.\$k raw -o - /tmp/freedomfrom-device.json 2>/dev/null || echo
+done
 EOF
-  )
-  DEVICE_UDID="${DEVICE_UDID//[[:space:]]/}"
-fi
+)
+{ read -r probed_udid; read -r probed_name; read -r probed_type; read -r probed_os; } \
+  <<<"$device_details"
+
+[[ -z "$DEVICE_UDID" ]] && DEVICE_UDID="${probed_udid//[[:space:]]/}"
 
 if [[ -n "$DEVICE_UDID" ]]; then
   printf '  %s✓%s its hardware UDID is %s\n' "$GREEN" "$RESET" "$DEVICE_UDID"
@@ -529,6 +536,18 @@ else
   note "  export FREEDOMFROM_DEVICE_UDID=<the 00008120-… value>"
   exit 1
 fi
+
+# What the rows will say they were observed on. An iPad and an iPhone answer
+# some of these checks differently — what a revoke leaves the status as is a
+# system behaviour, not an app one — so a row that does not name its device is
+# a row a later reader will read as being about the other one.
+DEVICE_LABEL="${FREEDOMFROM_DEVICE_LABEL:-}"
+if [[ -z "$DEVICE_LABEL" ]]; then
+  DEVICE_LABEL="${probed_name:-${probed_type:-unknown device}}"
+  [[ -n "${probed_os:-}" ]] && DEVICE_LABEL="$DEVICE_LABEL, ${probed_type:-iOS} $probed_os"
+fi
+write_env X_DEVICE_LABEL "$DEVICE_LABEL"
+printf '  %s✓%s it is a %s\n' "$GREEN" "$RESET" "$DEVICE_LABEL"
 
 say ""
 say "You will also need, before the commitment is armed:"
@@ -564,6 +583,42 @@ fi
 pause
 
 # ── 3 ─────────────────────────────────────────────────────────────────────
+stage "C1 · The consent sentence, if this device has never run it"
+say "Not a Phase 3 check. It is here because this wizard is what destroys the"
+say "chance to take it: the next stage has you tap through Targets, and the"
+say "first launch consumes first run for the life of the device."
+say ""
+say "C1 asks whether the sentence carrying all of this app's informed consent is"
+say "on screen before the hold. It shows once ever — the Keychain record outlives"
+say "app deletion (ADR 0002) and clean slate deliberately does not reset it"
+say "(ADR 0008) — so a device that has already run freedomfrom cannot be asked,"
+say "and the clean run on the phone could not take it."
+say ""
+step "Open freedomfrom and look at the first screen it settles on."
+say ""
+say "Which is it?"
+note "  a  'Begin', under two lines about blocking what you choose"
+note "  b  Targets: a picker, a place to type a domain"
+note "  c  a countdown — something is still running from an earlier session"
+observe C1_SCREEN "a / b / c:"
+
+if [[ "$C1_SCREEN" == a ]]; then
+  say ""
+  say "Read the screen before you touch it."
+  observe C1_SENTENCE "Does it say no app on this device can be deleted while it runs? (y/n)"
+  step "Now tap 'Begin'."
+  observe C1_PROMPT "Did iOS ask for Screen Time access? (y/n)"
+  note "Grant it. Refusing is X2's business, later in this run."
+else
+  C1_SENTENCE=""; C1_PROMPT=""
+  say ""
+  note "First run has already been consumed here, so C1 cannot be taken on this"
+  note "device. The row is left exactly as it is — including a green one another"
+  note "device earned, which writing 'Not observable' over would lose for good."
+fi
+pause
+
+# ── 4 ─────────────────────────────────────────────────────────────────────
 stage "Arm the commitment"
 say "One app, no domains, and long enough to be broken twice and still be"
 say "running: about $LENGTH_MINUTES minutes."
@@ -638,7 +693,7 @@ note "late is recorded as inconclusive rather than scored."
 budget
 pause
 
-# ── 4 ─────────────────────────────────────────────────────────────────────
+# ── 5 ─────────────────────────────────────────────────────────────────────
 stage "X1 · Before the revoke"
 budget
 say "Nothing is broken yet. This is the reading the rest of X1 is measured from."
@@ -654,7 +709,7 @@ if check_open X1; then
 fi
 pause
 
-# ── 5 ─────────────────────────────────────────────────────────────────────
+# ── 6 ─────────────────────────────────────────────────────────────────────
 stage "X1 · The revoke"
 budget
 say "This is the one route out of a commitment that the app cannot close, and"
@@ -682,7 +737,7 @@ if check_open X1; then
 fi
 pause
 
-# ── 6 ─────────────────────────────────────────────────────────────────────
+# ── 7 ─────────────────────────────────────────────────────────────────────
 stage "X2 · Does it prompt again after a revoke?"
 budget
 say "The app re-requests authorization on every launch and foreground while a"
@@ -707,7 +762,7 @@ if check_open X2; then
 fi
 pause
 
-# ── 7 ─────────────────────────────────────────────────────────────────────
+# ── 8 ─────────────────────────────────────────────────────────────────────
 stage "X3 · Delete and reinstall"
 budget
 say "This is why the revoke had to come first: a working denyAppRemoval stops"
@@ -750,7 +805,7 @@ if check_open X3; then
 fi
 pause
 
-# ── 8 ─────────────────────────────────────────────────────────────────────
+# ── 9 ─────────────────────────────────────────────────────────────────────
 stage "X4 · Is an unresolvable token detectable at all?"
 budget
 say "The check that can delete a code path. If a token that stopped resolving is"
@@ -776,7 +831,7 @@ elif check_open X4; then
 fi
 pause
 
-# ── 9 ─────────────────────────────────────────────────────────────────────
+# ── 10 ─────────────────────────────────────────────────────────────────────
 stage "X5 · The deadline, the history row, and the clean slate"
 say "Wait it out. Do not open the app."
 say ""
@@ -813,7 +868,7 @@ note "deliberately leaves first run consumed (ADR 0008), which is also why C1"
 note "cannot be re-walked on this phone."
 pause
 
-# ── 10 ────────────────────────────────────────────────────────────────────
+# ── 11 ────────────────────────────────────────────────────────────────────
 stage "X6 · Capture"
 say "One capture for the whole run, not one per check."
 say ""
@@ -849,7 +904,7 @@ else
 fi
 pause
 
-# ── 11 ────────────────────────────────────────────────────────────────────
+# ── 12 ────────────────────────────────────────────────────────────────────
 stage "The verdicts"
 
 app=$(log_for app)
@@ -944,6 +999,26 @@ pause
 # prompts, no ssh, no clock. scripts/test-x1-x5-verdicts extracts exactly this
 # span and drives it, so the chain is exercised without a phone. Keep it pure.
 
+# ── C1 ────────────────────────────────────────────────────────────────────
+# Not Phase 3's row, and the only one here that can be left untouched.
+#
+# It is written only when it was actually observed. A device that had already
+# consumed first run has nothing to say about C1, and writing "Not observable"
+# over a green another device earned would destroy an observation that cannot
+# be retaken anywhere — which is the whole reason this row was homeless.
+if [[ "${C1_SCREEN:-}" == a && "${C1_SENTENCE:-}" =~ ^[Yy] && "${C1_PROMPT:-}" =~ ^[Yy] ]]; then
+  record_result C1 "**Green**" \
+    "The consent sentence was on screen before anything was committed, and iOS asked for Screen Time access on 'Begin'. Observed on ${DEVICE_LABEL:-an unnamed device}, which had never run freedomfrom — the phone's C1 could not be taken, because first run shows once ever and nothing resets it (ADR 0002, ADR 0008)" \
+    "None"
+elif [[ "${C1_SCREEN:-}" == a ]]; then
+  c1_reason="the authorization prompt did not appear"
+  [[ "${C1_SENTENCE:-}" =~ ^[Nn] ]] && c1_reason="the consent sentence was not on the first-run screen"
+  record_result C1 "**Red**" \
+    "First run was reached on ${DEVICE_LABEL:-an unnamed device}, but $c1_reason" \
+    "None bound — ADR 0003 rests informed consent on that screen, and a first run that does not state the cost is a decision to re-take rather than an amendment to apply"
+  FOLLOWUP+=("C1 red: first run did not state what it costs. ADR 0003 needs re-opening, not amending")
+fi
+
 # ── X1 ────────────────────────────────────────────────────────────────────
 # Three observations rather than a verdict, and the first is the one the run is
 # worth walking for. What a revoke leaves the status as is the fact #54's fix
@@ -1007,7 +1082,7 @@ else
 
   if [[ "$MARKS" == 1 && "${X1_RUNNING_AFTER:-}" =~ ^[Yy] ]]; then
     record_result X1 "**Green**, and \`$AUTH_AFTER_REVOKE\` after a revoke" \
-      "A settled foreground read after the revoke says \`authorization state=$AUTH_AFTER_REVOKE\`$contrast. The countdown was still running afterwards and the deadline never moved, and $arity. On the mark's cause: $when" \
+      "On ${DEVICE_LABEL:-an unnamed device}: a settled foreground read after the revoke says \`authorization state=$AUTH_AFTER_REVOKE\`$contrast. The countdown was still running afterwards and the deadline never moved, and $arity. On the mark's cause: $when" \
       "None bound — every result here leaves ADR 0005 standing. **What it decides is #54**: a revoke reading \`$AUTH_AFTER_REVOKE\` is what tells that fix which state may carry the break signal"
   else
     detail="A settled foreground read after the revoke says \`authorization state=$AUTH_AFTER_REVOKE\`$contrast, and $arity"
@@ -1171,7 +1246,7 @@ fi
 
 pause
 
-# ── 12 ────────────────────────────────────────────────────────────────────
+# ── 13 ────────────────────────────────────────────────────────────────────
 stage "What this run produced"
 say "Results table rows written into docs/hardware-smoke-checklist.md:"
 for r in "${RECORDED[@]}"; do note "  $r"; done
