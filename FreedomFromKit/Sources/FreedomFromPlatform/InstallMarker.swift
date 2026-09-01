@@ -32,8 +32,23 @@ public struct InstallMarker: Sendable {
         return FileManager.default.fileExists(atPath: url.path)
     }
 
-    public func place() {
-        guard let url, !FileManager.default.fileExists(atPath: url.path) else { return }
-        try? Data().write(to: url, options: .atomic)
+    /// Reports whether the marker is there afterwards, which is the only thing
+    /// the caller can do anything with.
+    ///
+    /// It used to swallow both failures — an unresolvable directory and a
+    /// failed write — and return nothing, so a marker that never persisted was
+    /// indistinguishable from one that did. That is not a theoretical shape: an
+    /// archive shows `marked broken` on a launch three seconds after one that
+    /// had already called this, and nothing recorded which half went wrong.
+    @discardableResult
+    public func place() -> Bool {
+        guard let url else { return false }
+        if FileManager.default.fileExists(atPath: url.path) { return true }
+        do {
+            try Data().write(to: url, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
     }
 }

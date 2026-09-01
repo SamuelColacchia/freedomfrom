@@ -63,6 +63,19 @@ public struct Log: Sendable {
         logger.error("record write failed status=\(status, privacy: .public)")
     }
 
+    /// What the install marker was, and whether placing it worked.
+    ///
+    /// An absent marker beside a running commitment is a break (ADR 0005), so a
+    /// marker that never persists marks every commitment broken on every
+    /// launch — the same symptom as #54 and a different cause. The first run to
+    /// go looking found `found=false` on a launch three seconds after one that
+    /// had already placed it, and nothing in the archive could say whether the
+    /// write had failed or the file had gone: both are `try?` on the way in.
+    public func installMarker(found: Bool, placed: Bool) {
+        logger.notice(
+            "install marker found=\(found, privacy: .public) placed=\(placed, privacy: .public)")
+    }
+
     // MARK: - Enforcement
 
     /// Whether a `ManagedSettingsStore` mutation was attempted and returned.

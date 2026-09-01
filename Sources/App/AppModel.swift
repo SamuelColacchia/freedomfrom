@@ -84,7 +84,7 @@ final class AppModel {
         // Read before placing: an absent marker beside a running commitment is
         // the only evidence that this install is not the one that committed.
         let reinstalled = !marker.isPresent
-        marker.place()
+        log.installMarker(found: !reinstalled, placed: marker.place())
 
         // The read first and alone, so the right screen is on the glass before
         // anything talks to a daemon.
@@ -109,11 +109,18 @@ final class AppModel {
     /// Authorization is re-requested on every launch while a commitment runs,
     /// so a moment of weakness does not end a month of commitment. Declining
     /// the re-request is accepted and not pursued.
+    ///
+    /// **The status is logged and never judged.** It used to be read here and
+    /// passed in as evidence of a break, which marked a running commitment
+    /// broken on every cold launch, because the framework has not loaded it yet
+    /// on a process that young (#54). The mark is made inside the
+    /// reconciliation now, from a registration the system actually refused —
+    /// see `BreakObservation`. What is left here is the one thing only a launch
+    /// can see, which is a missing install marker.
     private func reconcile(reinstalled: Bool) async {
-        let authorized = Self.isAuthorized
         log.authorization(String(describing: AuthorizationCenter.shared.authorizationStatus))
 
-        apply(await offMainActor(brokenObserved: reinstalled || !authorized))
+        apply(await offMainActor(brokenObserved: reinstalled))
 
         guard record.active != nil, !Self.isAuthorized else { return }
         await requestAuthorization()
@@ -195,13 +202,22 @@ final class AppModel {
         persist()
     }
 
+    /// Written like the domains are, and for the same reason: ADR 0008 makes
+    /// the draft the typed domains *and* the chosen length, and a length that
+    /// lives only in memory is not part of a draft that survives anything.
+    ///
+    /// It used to ride on the backgrounding write alone, which held right up
+    /// until somebody force-quit from the switcher — hardware check S3's
+    /// re-walk found the domains coming back and the length gone.
     func chooseLength(_ length: CommitmentLength) {
         record.draft.length = length
+        persist()
     }
 
-    /// The draft is written when a domain is committed with return, and when
-    /// the app backgrounds — so a finished domain always survives an
-    /// interruption and a half-typed one never does (ADR 0008).
+    /// The draft is written when a domain is committed with return, when a
+    /// length is chosen, and when the app backgrounds — so a finished domain
+    /// always survives an interruption and a half-typed one never does
+    /// (ADR 0008).
     ///
     /// The picker returning used to write too. It no longer has anything to
     /// write: apps left the draft when hardware check S3 came back red.

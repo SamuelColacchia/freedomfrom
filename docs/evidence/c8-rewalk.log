@@ -1,0 +1,44 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-01 01:56:56.095 Df FreedomFrom[19896:189f9a] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-09-01 01:56:56.096 Df FreedomFrom[19896:189f9a] [com.samuelcolacchia.freedomfrom:app] install marker found=true placed=true
+2026-09-01 01:56:56.116 Df FreedomFrom[19896:189f9a] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-09-01 01:56:56.118 Df FreedomFrom[19896:189fa4] [com.samuelcolacchia.freedomfrom:app] record read found=true active=false
+2026-09-01 01:57:04.991 Df FreedomFrom[19896:189f9d] [com.samuelcolacchia.freedomfrom:app] record written
+2026-09-01 01:57:06.126 Df FreedomFrom[19898:18a020] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-09-01 01:57:06.127 Df FreedomFrom[19898:18a020] [com.samuelcolacchia.freedomfrom:app] install marker found=true placed=true
+2026-09-01 01:57:06.139 Df FreedomFrom[19898:18a020] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-09-01 01:57:06.142 Df FreedomFrom[19898:18a02e] [com.samuelcolacchia.freedomfrom:app] record read found=true active=false
+2026-09-01 01:58:25.964 Df FreedomFrom[19898:18a2e0] [com.samuelcolacchia.freedomfrom:app] record written
+2026-09-01 01:58:27.025 Df FreedomFrom[19907:18a30c] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-09-01 01:58:27.026 Df FreedomFrom[19907:18a30c] [com.samuelcolacchia.freedomfrom:app] install marker found=true placed=true
+2026-09-01 01:58:27.037 Df FreedomFrom[19907:18a30c] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-09-01 01:58:27.040 Df FreedomFrom[19907:18a312] [com.samuelcolacchia.freedomfrom:app] record read found=true active=false
+2026-09-01 02:02:04.876 Df FreedomFrom[19907:18a37c] [com.samuelcolacchia.freedomfrom:app] record written
+2026-09-01 02:02:18.686 Df FreedomFrom[19907:18a9ed] [com.samuelcolacchia.freedomfrom:app] record written
+2026-09-01 02:02:18.690 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] record read found=true active=true
+2026-09-01 02:02:18.690 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] deadline 2026-09-01T09:17:18Z
+2026-09-01 02:02:18.690 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] coverage resolved=1 of named=1
+2026-09-01 02:02:18.748 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] store mutation enforcement landed=true
+2026-09-01 02:02:18.751 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] store mutation deadline mirror landed=true
+2026-09-01 02:02:19.305 Df FreedomFrom[19907:18a973] [com.samuelcolacchia.freedomfrom:app] window registered kind=final start=2026-09-01T09:17:18Z end=2026-09-08T09:17:18Z
+2026-09-01 02:02:30.379 Df FreedomFrom[19936:18ae2e] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-09-01 02:02:30.381 Df FreedomFrom[19936:18ae2e] [com.samuelcolacchia.freedomfrom:app] install marker found=true placed=true
+2026-09-01 02:02:30.395 Df FreedomFrom[19936:18ae2e] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-09-01 02:02:30.398 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] record read found=true active=true
+2026-09-01 02:02:30.398 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] deadline 2026-09-01T09:17:18Z
+2026-09-01 02:02:30.398 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] coverage resolved=1 of named=1
+2026-09-01 02:02:30.414 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] store mutation enforcement landed=true
+2026-09-01 02:02:30.419 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] store mutation deadline mirror landed=true
+2026-09-01 02:02:30.673 Df FreedomFrom[19936:18ae35] [com.samuelcolacchia.freedomfrom:app] window registered kind=final start=2026-09-01T09:17:18Z end=2026-09-08T09:17:18Z
+2026-09-01 02:05:15.383 Df FreedomFrom[19936:18ae30] [com.samuelcolacchia.freedomfrom:app] record written
+2026-09-01 02:17:19.631 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] woke reason=intervalDidStart
+2026-09-01 02:17:19.633 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] record read found=true active=true
+2026-09-01 02:17:19.633 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] deadline 2026-09-01T09:17:18Z
+2026-09-01 02:17:19.663 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] store mutation release landed=true
+2026-09-01 02:17:19.663 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] released late_by_seconds=2
+2026-09-01 02:17:19.664 Df Monitor[20093:18cd81] [com.samuelcolacchia.freedomfrom:monitor] record written
+2026-09-01 02:18:22.496 Df FreedomFrom[20112:18d3b7] [com.samuelcolacchia.freedomfrom:app] woke reason=launch
+2026-09-01 02:18:22.497 Df FreedomFrom[20112:18d3b7] [com.samuelcolacchia.freedomfrom:app] install marker found=true placed=true
+2026-09-01 02:18:22.513 Df FreedomFrom[20112:18d3b7] [com.samuelcolacchia.freedomfrom:app] authorization state=Not Determined
+2026-09-01 02:18:22.515 Df FreedomFrom[20112:18d3c0] [com.samuelcolacchia.freedomfrom:app] record read found=true active=false
+2026-09-01 02:18:23.619 Df FreedomFrom[20112:18d3bb] [com.samuelcolacchia.freedomfrom:app] record written
