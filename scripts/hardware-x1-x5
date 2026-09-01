@@ -688,7 +688,7 @@ warn "This replaces whatever freedomfrom is on the phone."
 note "The commitment record lives in the Keychain and survives that (ADR 0002)."
 
 if confirm "Install a clean build on $DEVICE now?"; then
-  if "$REPO/scripts/mac" device; then
+  if FREEDOMFROM_DEVICE="$DEVICE" "$REPO/scripts/mac" device; then
     printf '  %s✓ installed%s\n' "$GREEN" "$RESET"
   else
     warn "install failed. Read the error above; scripts/mac rawlog has the rest."
@@ -951,7 +951,7 @@ if check_open X3; then
   if [[ "$X3_DELETED" =~ ^[Yy] ]]; then
     say ""
     say "Reinstalling from this machine."
-    if "$REPO/scripts/mac" device; then
+    if FREEDOMFROM_DEVICE="$DEVICE" "$REPO/scripts/mac" device; then
       printf '  %s✓ reinstalled%s\n' "$GREEN" "$RESET"
     else
       warn "reinstall failed. Read the error above."

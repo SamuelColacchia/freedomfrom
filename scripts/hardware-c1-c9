@@ -538,7 +538,7 @@ note "The commitment record lives in the Keychain and survives that (ADR 0002),"
 note "so anything currently running will still be running afterwards."
 
 if confirm "Install a clean build on $DEVICE now?"; then
-  if "$REPO/scripts/mac" device; then
+  if FREEDOMFROM_DEVICE="$DEVICE" "$REPO/scripts/mac" device; then
     printf '  %s✓ installed%s\n' "$GREEN" "$RESET"
   else
     warn "install failed. Read the error above; scripts/mac rawlog has the rest."

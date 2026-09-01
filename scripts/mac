@@ -10,7 +10,7 @@ set -euo pipefail
 HOST="${FREEDOMFROM_MAC_HOST:-mac}"
 ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"   # relative to the Mac's $HOME
 SIM="${FREEDOMFROM_SIM:-iPhone 17 Pro}"
-DEVICE="${FREEDOMFROM_DEVICE:-7EE3550E-8A48-5192-B729-961CB3FD51E9}"
+DEVICE="${FREEDOMFROM_DEVICE:-}"
 SIGN_SOCKET="${FREEDOMFROM_SIGN_SOCKET:-$HOME/.ssh/cm/mac-sign}"
 
 SCHEME=FreedomFrom
@@ -49,6 +49,85 @@ EOF
 
 # Run a script on the Mac. The script arrives on stdin, so nothing is quoted twice.
 remote() { ssh -o BatchMode=yes "$HOST" bash -s; }
+
+# The device to install on, chosen rather than assumed.
+#
+# A UDID used to be hardcoded here as the default, which is how a session aimed
+# at one device installed on another: the export was in the instructions and
+# not in the shell, and nothing said which phone had been picked.
+#
+# An explicit FREEDOMFROM_DEVICE still wins outright and is never second-
+# guessed — the wizards set it, and anything scripted needs it. With nothing
+# set, this asks; with one device connected it takes it and says so; with none
+# it says that, rather than reaching for a UDID that may not be plugged in.
+#
+# Only connected devices are offered. `devicectl` lists a device long after it
+# was last cabled, as "available (paired)", and nothing can be installed to one
+# of those.
+resolve_device() {
+  [[ -n "$DEVICE" ]] && return 0
+
+  local listing rows=() row
+  listing=$(remote <<'LIST' 2>/dev/null || true
+xcrun devicectl list devices 2>/dev/null
+LIST
+  )
+  while IFS= read -r row; do
+    [[ -n "$row" ]] && rows+=("$row")
+  done < <(grep -E '\bconnected\b' <<<"$listing" | sed -E 's/[[:space:]]{2,}/\t/g')
+
+  if (( ${#rows[@]} == 0 )); then
+    cat >&2 <<EOF
+No device is connected to $HOST.
+
+Paired is not reachable: devicectl lists devices long after they were
+unplugged. Cable one, unlock it, and re-run — or name one outright:
+
+  export FREEDOMFROM_DEVICE=<identifier>
+EOF
+    return 4
+  fi
+
+  if (( ${#rows[@]} == 1 )); then
+    DEVICE=$(cut -f3 <<<"${rows[0]}")
+    printf '  using %s (%s)\n' \
+      "$(cut -f1 <<<"${rows[0]}")" "$(cut -f5 <<<"${rows[0]}")" >&2
+    return 0
+  fi
+
+  # More than one, so it is asked. Installing on the wrong phone is how a run
+  # gets walked against something nobody was watching, and it costs the run.
+  if [[ ! -t 0 ]]; then
+    {
+      printf 'More than one device is connected, and there is no terminal to ask at:\n\n'
+      for row in "${rows[@]}"; do
+        printf '  %s  %s\n' "$(cut -f3 <<<"$row")" "$(cut -f1 <<<"$row")"
+      done
+      printf '\nName one:  export FREEDOMFROM_DEVICE=<identifier>\n'
+    } >&2
+    return 4
+  fi
+
+  printf '\n  Which device?\n\n' >&2
+  local i=1
+  for row in "${rows[@]}"; do
+    printf '    %d) %-24s %s\n' "$i" "$(cut -f1 <<<"$row")" "$(cut -f5 <<<"$row")" >&2
+    i=$(( i + 1 ))
+  done
+  printf '\n' >&2
+
+  local choice
+  while :; do
+    printf '  1-%d: ' "${#rows[@]}" >&2
+    read -r choice || return 4
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#rows[@]} )); then
+      DEVICE=$(cut -f3 <<<"${rows[choice - 1]}")
+      printf '  using %s\n' "$(cut -f1 <<<"${rows[choice - 1]}")" >&2
+      return 0
+    fi
+    printf '  Not one of those.\n' >&2
+  done
+}
 
 # Run a script on the Mac through the socket a human unlocked for signing.
 remote_signing() { ssh -o ControlPath="$SIGN_SOCKET" "$HOST" bash -s; }
@@ -179,6 +258,7 @@ EOF
 # the unlock they had already done.
 cmd_device() {
   announce_hardware_pass
+  resolve_device || return $?
   if [[ ! -S "$SIGN_SOCKET" ]]; then
     cat >&2 <<EOF
 No signing socket at $SIGN_SOCKET
@@ -295,14 +375,15 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
   shot [file]      capture what the simulator is showing right now.
   log [mins]       re-read those log lines without rebuilding.
   rawlog [lines]   tail the unfiltered xcodebuild log.
-  device           sign and install on the phone. Needs a cable and a human-unlocked socket.
+  device           sign and install on a connected device. Asks which, when there is a
+                   choice. Needs a cable and a human-unlocked socket.
   clean            drop the derived-data cache and the generated project.
 
 Set FREEDOMFROM_HARDWARE_PASS=1 to compile in a release control for the
 hardware pass. The product has none; no build without this variable can.
 
 Overridable: FREEDOMFROM_MAC_HOST FREEDOMFROM_MAC_ROOT FREEDOMFROM_SIM
-             FREEDOMFROM_DEVICE FREEDOMFROM_SIGN_SOCKET
+             FREEDOMFROM_DEVICE (skips the picker) FREEDOMFROM_SIGN_SOCKET
 EOF
 }
 
