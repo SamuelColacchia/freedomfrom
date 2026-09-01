@@ -50,3 +50,28 @@ Seven steps, not the six the ticket listed. Re-arm after delete-and-reinstall wa
 - **One type treatment, not two.** A direct consequence of picking one personality instead of the mix.
 - **A `ShieldAction` extension stays deferred.** ADR 0002 deferred it because a shield button would have nothing to do; the decided shield has no button at all.
 - **The prototype is thrown away, not promoted.** It was written under prototype constraints — no tests, no error handling, no persistence. The decided flow gets rewritten properly when the v1 build spec is synthesized.
+
+## Amended by hardware: the collateral holds while authorized, not while it runs
+
+> Hardware check C6 came back **green on both halves**: under `.individual`
+> authorization, `denyAppRemoval` refused a deletion and
+> `requireAutomaticDateAndTime` held the clock. The sentence keeps both claims.
+>
+> Check X3 then deleted the app **while the commitment was still running** —
+> `record read found=true active=true`, deadline untouched — having revoked
+> Screen Time access first. The restrictions had gone with the authorization,
+> not with the commitment.
+
+The first-run sentence reads **while it is authorized** rather than *while it
+runs*. Same two claims, and both were observed; what was wrong was the
+condition attached to them. A commitment outlives a revoke by design (ADR 0005
+marks a break and does not end one), so "while it runs" names a period during
+which the sentence is false.
+
+The whisper beneath it gains three words for the same reason: *the way out is
+in Settings. **It ends all of that**, and it is recorded.* The way out was
+always named; what it costs was not.
+
+Nothing else moves. The sentence stays at full weight, the screen stays two
+statements and one action, and no new screen appears — the fix for a claim that
+was too broad is a narrower claim, which is this ADR's stance everywhere else.

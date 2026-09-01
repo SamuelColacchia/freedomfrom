@@ -8,6 +8,12 @@ import SwiftUI
 /// committing and was the line most likely to go unread. If a tester ever says
 /// they did not know it would stop them deleting other apps, the fix is that
 /// sentence and not a new screen.
+///
+/// Both of its claims were observed to bite under `.individual` (hardware check
+/// C6), so it keeps both. What changed is the line under it: the restrictions
+/// hold while the app is *authorized*, not merely while the commitment runs —
+/// check X3 revoked, then deleted the app, with the commitment still running
+/// and its deadline untouched. "It ends all of that" is that finding.
 struct FirstRunView: View {
     @Bindable var model: AppModel
 
@@ -25,13 +31,13 @@ struct FirstRunView: View {
             Spacer()
 
             Text(
-                "While it runs, no app on this phone can be deleted — not just this one — and the clock stays automatic."
+                "While it is authorized, no app on this phone can be deleted — not just this one — and the clock stays automatic."
             )
             .font(.system(size: 16, weight: .light))
             .foregroundStyle(Quiet.ink)
             .lineSpacing(6)
 
-            Text("The way out is in Settings. It is recorded.")
+            Text("The way out is in Settings. It ends all of that, and it is recorded.")
                 .whisper()
                 .padding(.top, 14)
                 .padding(.bottom, 22)
