@@ -59,20 +59,32 @@ root-gated on the Mac. **Do not fill in a results row you did not observe.** A
 fabricated row is worse than an empty one, because every claim the app makes is
 reconciled against that table before TestFlight.
 
-`scripts/hardware-s2-s3` is the wizard for the two gates on the walking
-skeleton, and `scripts/hardware-c1-c9` is the one for the clean run. Each does
-the install, the log reads, the verdicts, the results table, and the bound
-amendment; the human supplies the taps and the one `sudo` line it prints rather
-than runs. Phase 3 has no wizard yet, and one built the same way is the right
-way to add it.
+Every phase has a wizard. `scripts/hardware-s2-s3` walks the two gates on the
+walking skeleton, `scripts/hardware-c1-c9` the clean run, and
+`scripts/hardware-x1-x5` the sacrificial one. Each does the install, the log
+reads, the verdicts, the results table, and the bound amendment; the human
+supplies the taps and the one `sudo` line it prints rather than runs.
 
 A wizard's verdict chain runs exactly once, at the end of a run nobody wants to
-walk twice, so it is tested rather than trusted:
-`scripts/test-c1-c9-verdicts` extracts the chain out of `hardware-c1-c9`
-between its `verdicts` markers and drives it against answer sets a real run
-produces — including the ones where the deadline runs out part-way, which is
-where it used to fall over. Keep that span pure, and add a case there before
-changing a branch in it.
+walk twice, so it is tested rather than trusted. `scripts/test-c1-c9-verdicts`
+and `scripts/test-x1-x5-verdicts` extract the chain out of their wizard between
+its `verdicts` markers and drive it against answer sets a real run produces —
+including the ones where the deadline runs out part-way, which is where the
+first of them used to fall over. Keep that span pure, and add a case there
+before changing a branch in it.
+
+**Two branches that look the same from outside need a marker, not an
+assertion on their words.** An expired check and a never-observed one both write
+"Inconclusive, re-run", so a case asserting only that passes whichever branch
+ran, and a deleted `was_expired` guard survives a green suite. Each test file
+stubs `expired_note` to print an `EXPIRED-ROW` line, and its cases assert on
+that instead of on the words.
+
+**The marker lives in the stub, not in the wizard.** The wizards' own
+`expired_note` writes a table row and nothing else; a marker there would print
+noise at a human mid-run. Any future pair of branches that agree on their
+output wants the same treatment, and the way to check it works is to delete a
+guard and watch the suite go red.
 
 ## Agent skills
 

@@ -145,6 +145,8 @@ Its verdict chain is exercised without a phone by `scripts/test-c1-c9-verdicts`.
 **C1. First run states what it costs.**
 **Green**: the consent sentence is visible before the hold, and the authorization prompt appears.
 
+> **It can only be taken on a device that has never run the app**, so it is not really Phase 2's to schedule. First run shows once ever, the Keychain record outlives app deletion (ADR 0002), and clean slate deliberately does not reset it (ADR 0008) — there is no route back. `scripts/hardware-x1-x5` offers it as its own first stage, because that wizard is the one that would otherwise consume first run without asking.
+
 **C2. The shield applies.**
 Open the app target.
 **Green**: Apple's shield replaces it. `app` logs enforcement applied with a resolved-of-named count.
@@ -191,27 +193,47 @@ Wait out the deadline. Do not open the app.
 
 One longer commitment, deliberately broken. Everything here marks it, which is why it is a second commitment.
 
-**X1. Revoke authorization.**
-Settings → Screen Time → freedomfrom → revoke. Relaunch the app.
-**Green**: the commitment is marked broken exactly once, and the countdown still runs to the same deadline.
+**All of Phase 3 has a wizard: `scripts/hardware-x1-x5`.** Same shape as the clean run's: it installs, walks X1 through X5 in the forced order, prints the root-gated `log collect` line for a human to run in their own shell, reads the archive back, decides each verdict from the log and your answer together, and fills in the five rows below. Walk it rather than this page. Its verdict chain is exercised without a phone by `scripts/test-x1-x5-verdicts`.
 
-**X2. Does `requestAuthorization` re-prompt from `.denied`?**
+> **It takes C1 first, when the device has never run the app.** Not because C1 is Phase 3's, but because this wizard is what destroys the chance to take it: its next stage has you tap through Targets, and the first launch consumes first run for the life of the device. So the offer belongs here, ahead of the thing that would burn it. On a device that has already run freedomfrom the stage says so and **leaves the row exactly as it is** — including a green another device earned, which "Not observable" written over the top of would lose for good.
+
+> **What #54 takes off this page, and what it leaves.** The app marks a running commitment broken on *any* cold launch, because it judges on an `authorizationStatus` that has not settled yet. So on this run the commitment will already be marked before anybody revokes anything, and **no check here can attribute a mark to the thing it was supposed to be testing.** Three claims survive that, and Phase 3 is now built around them rather than around the mark: that a break never moves a deadline, that the mark is recorded once rather than once per launch, and that a reinstall finds the commitment and re-arms. Everything below is worded so a green means one of those and never "the revoke did it".
+
+**X1. Revoke authorization.**
+Read the countdown first, then Settings → Screen Time → freedomfrom → revoke, then relaunch the app.
+This is three observations, not a verdict, and the first one is why the run is worth walking at all.
+- **X1a — what does the status read after a revoke?** Taken from `app`'s own `authorization state=` line on the relaunch. `Denied` and `Not Determined` are both results and neither is a failure. **This is the fact #54 turns on**: if a revoke reads `Denied`, the break signal is `.denied` and only `.denied`, and a `Not Determined` at launch is no evidence of anything. If a revoke also reads `Not Determined`, the status cannot carry the signal at launch at all and the mark has to wait for it to settle.
+- **X1b — was it already marked before the revoke?** Read the history or the log for this commitment before touching Settings. Already-marked is the expected answer while #54 stands, and observing it here is the on-device confirmation #54 was filed without.
+- **X1c — is the mark idempotent?** `markBroken` returns false on a second call, so `marked broken` should appear exactly once in the archive however many times the app was launched. This half of the original check survives #54 untouched, because it is about the record and not about the cause.
+
+**Green**: the archive holds exactly one `marked broken` for this commitment, and the countdown still runs to the same deadline it had before the revoke. **No ADR amendment is bound to any outcome here** — ADR 0005 says a break marks a running commitment and does not end one, and every result above leaves that standing. What a red produces is a bug, and the bug already has a number.
+
+**X2. Does `requestAuthorization` prompt again after a revoke?**
 On that relaunch.
 **Green**: a prompt appears; granting it re-arms coverage.
 **Red → amendment**: none needed. ADR 0005 pre-decided this degrades into the never-ask option at the cost of one wasted call per launch. Record it and move on.
 
+> Worded as "after a revoke" rather than "from `.denied`", because X1a is what establishes which state a revoke actually leaves. A check that names the state in its own question cannot be walked before the check that discovers it.
+
 **X3. Delete and reinstall.**
 Only possible after X1, because a working `denyAppRemoval` blocks it. Delete the app, reinstall, launch.
-**Green**: the app finds the commitment still running, marks it broken, and re-arms with no comment. The deadline is unchanged.
+**Green**: the app finds the commitment still running and re-arms with no comment, and the deadline is unchanged. That the reinstall also marks it broken proves nothing while #54 stands — the marker file is gone *and* the status is unsettled, so two sufficient causes fire at once and neither can be told from the other. What this row is for is the record outliving deletion, which is the foundation ADR 0002 puts everything else on.
 
 **X4. Is an unresolvable token detectable at all?**
-On that same relaunch, compare the resolved count against the named count.
-**Green**: if any token churned across the reinstall, coverage shrinks and the commitment is marked degraded.
-**Red → amendment**: if unresolvable tokens are indistinguishable from resolvable ones, the whole degradation path is unreachable. Coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
+On that same relaunch, compare the resolved count against the named count — **and open the blocked app.** Two readings, because the count alone cannot fail.
+**Green**: coverage shrank. A token churned across the reinstall and the app noticed, so degradation is reachable.
+**Inconclusive**: coverage is full *and* the shield is still up. Nothing churned, so this run produced no unresolvable token and says nothing about whether one would be detected. Re-run; it is not a red.
+**Red → amendment**: coverage is full and **the shield is gone**, *and the archive holds `store mutation enforcement landed=true` after the reinstall.* The token stopped resolving and the count did not notice, which is the only shape in which undetectability is observable at all. The whole degradation path is then unreachable: coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
+
+> **The count cannot fail on its own, which is why the shield is read beside it.** A churned token mints a different handle, so the app learns of it by minting and comparing — and a full count is equally consistent with "nothing churned" and "everything churned invisibly". Only enforcement can tell those apart, because a shield that is gone while the count says one-of-one is the app being wrong out loud.
+
+> **The enforcement clause on that red is load-bearing, so do not score this row by eye.** An unauthorized phone shields nothing, so if X2 came back red the shield is missing for a reason that has nothing to do with tokens — and a red scored on that would take degradation out of v1 on the strength of an unrelated result. `scripts/hardware-x1-x5` refuses the red when enforcement never applied. A person reading only the line above would not.
 
 **X5. History and clean slate.**
 Let it reach its deadline. Check the history row. Then run a clean slate.
-**Green**: the row reads broken; the clean slate erases the history and the draft together, on the longest hold in the app.
+**Green**: the clean slate erases the history and the draft together, on the longest hold in the app, and leaves first run alone.
+
+> **The history half of this row is uninformative, and says so rather than being dropped.** The row will read broken, and this commitment really was broken, so the answer is right — but it would also read broken had nobody touched it, because of #54. A green here is evidence about the clean slate and about nothing else. Once #54 is fixed, this half becomes a real check again and is worth re-walking with the rest of X1.
 
 **X6. Capture.** Sysdiagnose, filter, save.
 
@@ -221,13 +243,15 @@ Let it reach its deadline. Check the history row. Then run a clean slate.
 
 Fill in and commit. A red result should link the ADR amendment it triggered.
 
+**Rows in this table do not all come from the same device, so each says which one it came from.** The clean run was walked on an iPhone; C1 can only be taken on a device that has never run the app, which by then no iPhone here was. Most of these checks are about the app and read the same anywhere, but some are about iOS rather than about freedomfrom — what a revoke leaves `authorizationStatus` as is the system's behaviour, not the app's — and a row that does not name its device is a row the next reader will assume came from the other one.
+
 | Check | What it decides | Result | Evidence | Amendment fired |
 |---|---|---|---|---|
 | E1 | The evidence channel works | **Blocked** | `devicectl device sysdiagnose` fails opaquely; `log collect` needs root | Evidence section rewritten above; per-capture human step accepted |
 | S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
 | S2 | `ShieldConfig` can mutate the store (gate) | **Green** | `shieldconfig` logs `store mutation release landed=true`, and logged again after it, so no jetsam. **The shield being gone on the next open is the human's answer, not a log line** — the archive corroborates it only by holding no further `shieldconfig` wake, which is absence of evidence. The final window was suppressed and `monitor` logged nothing, so the extension was the only process that could have taken it | None |
 | S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
-| C1 | Consent sentence and prompt appear | Not observable | First run had already been consumed on this device. It shows once ever, the Keychain record outlives app deletion (ADR 0002), and clean slate deliberately does not reset it (ADR 0008), so there is no route back to that screen | None — but the sentence carrying all of this app's informed consent cannot be re-observed on a phone that has run it. C1 needs a device that never has |
+| C1 | Consent sentence and prompt appear | **Green** | The consent sentence was on screen before anything was committed, and iOS asked for Screen Time access on 'Begin'. Observed on iPad, iPad 26.6, which had never run freedomfrom — the phone's C1 could not be taken, because first run shows once ever and nothing resets it (ADR 0002, ADR 0008) | None |
 | C2 | The shield applies | **Green** | Apple's shield replaced the app, and `app` logs `store mutation enforcement landed=true` with `coverage resolved=1 of named=1`. **The shield on screen is the human's answer, not a log line** — `shieldconfig` waking corroborates it, since iOS launches that extension only while a shield is up | None |
 | C3a | The filter blocks at all (gate) | **Green** | Safari refused `metalcloak.com` while the control `wikipedia.org` loaded normally, with `store mutation enforcement landed=true` in the archive | None |
 | C3b | Which other browsers it covers | Survey | Safari **blocked**; Chrome **blocked**; Firefox **blocked**; Brave **blocked**; in-app WKWebView **blocked** | The targets step names only the browsers that blocked, and never generalizes |
@@ -236,10 +260,10 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 | C6 | Restrictions bite under `.individual` | **Green** | Deleting another app was refused, and 'Set Automatically' could not be switched off. The human's observation. There is no read-back of effective state (ADR 0005), so no log line corroborates either half | None |
 | C7 | Coverage reads true | **Green** | The countdown read `2 of 2 covered`, which is the `coverage resolved=1 of named=1` in the archive plus the one typed domain. It states what was enforced, not what was named | None |
 | C8 | The release arrives, and how late | Inconclusive, re-run | `released late_by_seconds=1` is in the archive, and the history row reads broken rather than completed | None — not a result |
-| X1 | Revoke marks broken once | | | |
-| X2 | Re-prompt from `.denied` | | | |
-| X3 | Delete and reinstall re-arms | | | |
-| X4 | Unresolvable tokens are detectable | | | |
-| X5 | History and clean slate | | | |
+| X1 | What a revoke reads as, and the mark's arity | **Green**, and `Not Determined` after a revoke | On iPad, iPad 26.6: a settled foreground read after the revoke says `authorization state=Not Determined`. Launches read `Not Determined` and foregrounds read `Approved/Not Determined` in the same run, which is #54's mechanism in one line. The countdown was still running afterwards and the deadline never moved, and it was marked broken exactly once across every launch and foreground in the run. On the mark's cause: the mark landed after the revoke, so on this run the two cannot be told apart | None bound — every result here leaves ADR 0005 standing. **What it decides is #54**: a revoke reading `Not Determined` is what tells that fix which state may carry the break signal |
+| X2 | Re-prompt after a revoke | **Green** | iOS prompted for Screen Time access on the first foreground after the revoke, and granting it re-armed coverage, and enforcement was applied again afterwards | None |
+| X3 | Delete and reinstall re-arms | **Green** | A reinstalled app read the record and found the commitment still running — `record read found=true active=true`, and `store mutation enforcement landed=true` follows it — and landed on the countdown with no comment. The deadline is the same one throughout the archive. The Keychain record outliving deletion is what ADR 0002 rests on, and this is the only check that exercises it | None |
+| X4 | Unresolvable tokens are detectable | Inconclusive, re-run | The countdown read `1 of 1 covered` before any of this, coverage read `1 of 1` after the reinstall, and the shield was still up — so nothing churned. This run produced no unresolvable token, and says nothing about whether one would be detected, which is a re-run and not a red | None — not a result |
+| X5 | History and clean slate | **Green** | The clean slate erased the history and the draft together and left first run consumed, on the longest hold in the app. `released late_by_seconds=3` in the archive. The history row read broken, which is recorded rather than scored: while #54 stands a commitment reads broken whether or not anything broke it | None |
 
 **Before the first TestFlight invite**: both runs done, and every claim the app makes reconciled against what they showed. Not every check green — nobody can prove what Brave does with a filter, and the app already handles that by naming no browser. **C3a is the exception**, because a gate that goes red changes what ships rather than what is claimed.

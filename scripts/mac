@@ -136,9 +136,26 @@ echo "cleaned \$R/derived and the generated project"
 EOF
 }
 
+# The one line that unlocks the login keychain through a socket that already
+# exists. Printed, never run: the password must not enter this session (issue
+# #13). It is the same line whether the socket was made a second ago or has
+# been up for hours, which is why both callers below print this rather than
+# each spelling it out and drifting.
+unlock_line() {
+  cat >&2 <<EOF
+  read -rs pw && printf '%s\\n' "\$pw" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\
+    'read -r p; security unlock-keychain -p "\$p" ~/Library/Keychains/login.keychain-db'
+EOF
+}
+
 # A device build needs two things no agent can do for itself: a keychain
 # unlocked by a person inside this very SSH session (issue #13), and a cabled
 # phone. Both are probed in under a second, ahead of an archive that is minutes.
+#
+# Three ways the signing half goes wrong and they want different fixes, so they
+# are told apart rather than collapsed into one message. Only one of them is
+# solved by deleting the socket, and saying so when it is not costs a person
+# the unlock they had already done.
 cmd_device() {
   if [[ ! -S "$SIGN_SOCKET" ]]; then
     cat >&2 <<EOF
@@ -148,27 +165,82 @@ A person at their own shell runs these. The password never enters this session:
 
   mkdir -p $(dirname "$SIGN_SOCKET")
   ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST
-  read -rs pw && printf '%s\\n' "\$pw" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\
-    'read -r p; security unlock-keychain -p "\$p" ~/Library/Keychains/login.keychain-db'
 EOF
+    unlock_line
     return 3
   fi
 
-  if ! remote_signing <<'PROBE' >/dev/null 2>&1
+  # A socket file outlives the master that made it — ControlPersist expires, the
+  # laptop sleeps, the master is killed — and what is left looks identical to a
+  # working one from here. This is the only case where removing the file is the
+  # right advice, so it is the only case that gives it.
+  if ! ssh -O check -o ControlPath="$SIGN_SOCKET" "$HOST" >/dev/null 2>&1; then
+    cat >&2 <<EOF
+Stale signing socket at $SIGN_SOCKET
+
+The file is there but no master session is behind it, so nothing can be run
+through it. A person at their own shell runs these:
+
+  rm -f $SIGN_SOCKET
+  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST
+EOF
+    unlock_line
+    return 3
+  fi
+
+  # Capture what codesign says rather than discarding it. The usual cause is a
+  # locked keychain, but "usual" is not "always" — an expired certificate and a
+  # missing identity fail here too, and a script that has the real error and
+  # prints its own guess instead sends people to unlock something that was
+  # never locked.
+  local probe rc=0
+  probe=$(remote_signing 2>&1 <<'PROBE'
 d=$(mktemp -d) && cp /bin/echo "$d/probe" &&
   codesign --force --sign "Apple Development" "$d/probe"
 rc=$?; rm -rf "$d"; exit $rc
 PROBE
-  then
-    echo "The socket at $SIGN_SOCKET exists but cannot sign: its keychain was never unlocked. Remove the socket and re-run 'scripts/mac device' to get the unlock lines." >&2
+  ) || rc=$?
+
+  if (( rc != 0 )); then
+    cat >&2 <<EOF
+The socket at $SIGN_SOCKET is live, but signing through it fails.
+
+Almost always the login keychain is still locked. The unlock has to happen
+inside this socket's session, so run this in your own shell and then re-run
+'scripts/mac device'. The socket stays up; nothing here is torn down:
+
+EOF
+    unlock_line
+    cat >&2 <<EOF
+
+What codesign actually said, in case it is not the keychain:
+
+$(sed 's/^/  /' <<<"${probe:-(no output)}")
+EOF
     return 3
   fi
 
-  if ! remote_signing <<EOF >/dev/null 2>&1
-xcrun devicectl device info details --device $DEVICE
+  # `device info details` answers for a device that was cabled once and is not
+  # cabled now: it stays paired, and the call succeeds against stale pairing
+  # records. So this asks the list for the state column instead, which is the
+  # only thing that distinguishes reachable from remembered.
+  local device_row
+  device_row=$(remote_signing <<EOF 2>/dev/null | grep "$DEVICE" || true
+xcrun devicectl list devices 2>/dev/null
 EOF
-  then
-    echo "Device $DEVICE is not reachable. Someone has to cable it to the Mac: issue #13 fixed that devices are plugged in only when installing." >&2
+  )
+  if [[ -z "$device_row" ]]; then
+    echo "Device $DEVICE is not visible to the Mac at all. Someone has to cable it: issue #13 fixed that devices are plugged in only when installing." >&2
+    return 4
+  fi
+  if ! grep -qw connected <<<"$device_row"; then
+    cat >&2 <<EOF
+Device $DEVICE is known to the Mac but not connected.
+
+  $(sed 's/  */ /g' <<<"$device_row")
+
+Paired is not reachable. Cable it, unlock it, and re-run.
+EOF
     return 4
   fi
 
