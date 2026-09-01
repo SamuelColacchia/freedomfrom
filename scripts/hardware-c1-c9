@@ -241,6 +241,24 @@ EXPIRED=()
 
 mkdir -p "$EVIDENCE"
 
+# A wizard with no one answering it is not a cheap no-op. `observe` gives up on
+# EOF and leaves the answer empty, `confirm` reads a blank as no, and `pause`
+# returns at once — so a non-interactive run races to the end and overwrites
+# $ENV_FILE with a column of empty answers. That file is the only record of what
+# a human saw, and a real half-walked run has been destroyed by exactly this.
+#
+# So: a terminal, or nothing.
+if [[ ! -t 0 ]]; then
+  cat >&2 <<EOF
+$(basename "${BASH_SOURCE[0]}") needs a terminal: it is a wizard, and every row
+it writes is a person's answer.
+
+With nothing on stdin it would run to the end answering itself, and overwrite
+$ENV_FILE with blanks.
+EOF
+  exit 2
+fi
+
 # ── Helpers particular to this wizard ─────────────────────────────────────
 
 # remote_sh runs a script on the Mac, arriving on stdin so nothing is quoted

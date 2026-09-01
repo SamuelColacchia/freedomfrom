@@ -248,6 +248,31 @@ EXPIRED=()
 
 mkdir -p "$EVIDENCE"
 
+# A wizard with no one answering it is not a cheap no-op. `observe` gives up on
+# EOF and leaves the answer empty, `confirm` reads a blank as no, and `pause`
+# returns at once — so a non-interactive run races to the end and overwrites
+# $ENV_FILE with a column of empty answers. That file is the only record of what
+# a human saw, and a real half-walked run has been destroyed by exactly this.
+#
+# So: a terminal, or nothing. FREEDOMFROM_PREFLIGHT_ONLY=1 runs the checks that
+# touch no state and exits before the first stamp, which is what a smoke test of
+# this script wants and is the only non-interactive path there is.
+if [[ ! -t 0 ]]; then
+  if [[ -z "${FREEDOMFROM_PREFLIGHT_ONLY:-}" ]]; then
+    cat >&2 <<EOF
+scripts/hardware-x1-x5 needs a terminal: it is a wizard, and every row it
+writes is a person's answer.
+
+With nothing on stdin it would run to the end answering itself, and overwrite
+$ENV_FILE with blanks.
+
+  run it in a terminal, or
+  FREEDOMFROM_PREFLIGHT_ONLY=1 scripts/hardware-x1-x5   # checks only, writes nothing
+EOF
+    exit 2
+  fi
+fi
+
 # ── Helpers particular to this wizard ─────────────────────────────────────
 
 # remote_sh runs a script on the Mac, arriving on stdin so nothing is quoted
@@ -265,19 +290,39 @@ log show --archive "$ARCHIVE" \\
 EOF
 }
 
-# deadline_epoch HH:MM turns a wall-clock time into an epoch second, rolling to
+# deadline_epoch TIME turns a wall-clock time into an epoch second, rolling to
 # tomorrow only when today's would be more than twelve hours past.
 #
 # The shape is checked before date(1) sees it, because date(1) is not a
 # validator: `date -d "today 14m"` succeeds and silently means something else.
+#
+# It takes an am/pm suffix, because the screen this is copied off does not show
+# a 24-hour clock. `CommitView` renders the deadline with `.hour().minute()`,
+# which is locale-formatted, and on a US locale that is "8:45 PM". A wizard that
+# demands 24-hour gets "4:25" for twenty-five past four in the afternoon and
+# reads it as twenty-five past four in the morning, and the only symptom is a
+# run that stops waiting twelve hours early.
 deadline_epoch() {
-  local at now
-  [[ "$1" =~ ^([01][0-9]|2[0-3]|[0-9]):[0-5][0-9](:[0-5][0-9])?$ ]] || return 1
-  at=$(date -d "today $1" +%s 2>/dev/null) || return 1
+  local raw at now
+  raw=$(tr 'APM' 'apm' <<<"$1")
+  raw="${raw// /}"
+  [[ "$raw" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?(am|pm)?$ ]] || return 1
+  at=$(date -d "today ${raw%[ap]m}${raw:${#raw}-2:2}" +%s 2>/dev/null) ||
+    at=$(date -d "today $raw" +%s 2>/dev/null) || return 1
   [[ -n "$at" ]] || return 1
   now=$(date +%s)
   (( at < now - 43200 )) && at=$(( at + 86400 ))
   printf '%s' "$at"
+}
+
+# ambiguous_clock TIME is true when the answer could mean either half of the
+# day: a bare 1-to-12 hour with no am/pm. Asking is cheap; being twelve hours
+# wrong costs the run's last stage.
+ambiguous_clock() {
+  local raw
+  raw=$(tr 'APM' 'apm' <<<"$1"); raw="${raw// /}"
+  [[ "$raw" == *am || "$raw" == *pm ]] && return 1
+  [[ "$raw" =~ ^([1-9]|1[0-2]):[0-5][0-9](:[0-5][0-9])?$ ]]
 }
 
 # still_running succeeds while the commitment's deadline is in the future.
@@ -488,26 +533,50 @@ else
   exit 1
 fi
 
-if [[ -S "$SIGN_SOCKET" ]]; then
-  printf '  %s✓%s a signing socket exists at %s\n' "$GREEN" "$RESET" "$SIGN_SOCKET"
+# A socket file outlives the master that made it, so its existence is not the
+# question. This asks the same thing `scripts/mac device` asks, and for the same
+# reason: the alternative is finding out at stage 2, with the phone already in
+# your hand and the install the thing that fails.
+if [[ -S "$SIGN_SOCKET" ]] && ssh -O check -o ControlPath="$SIGN_SOCKET" "$HOST" >/dev/null 2>&1; then
+  printf '  %s✓%s a live signing socket at %s\n' "$GREEN" "$RESET" "$SIGN_SOCKET"
 else
-  warn "no signing socket, so the build cannot be signed or installed."
-  say "A person at their own shell runs these; the password never enters this session:"
-  note "  mkdir -p $(dirname "$SIGN_SOCKET")"
+  if [[ -S "$SIGN_SOCKET" ]]; then
+    warn "the socket at $SIGN_SOCKET is stale: no master session is behind it."
+    say "A person at their own shell runs these; the password never enters this session:"
+    note "  rm -f $SIGN_SOCKET"
+  else
+    warn "no signing socket, so the build cannot be signed or installed."
+    say "A person at their own shell runs these; the password never enters this session:"
+    note "  mkdir -p $(dirname "$SIGN_SOCKET")"
+  fi
   note "  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST"
   note "  read -rs pw && printf '%s\\n' \"\$pw\" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\"
   note "    'read -r p; security unlock-keychain -p \"\$p\" ~/Library/Keychains/login.keychain-db'"
   pause "Run those in another shell, then press Enter."
 fi
 
-if remote_sh <<EOF | grep -q "$DEVICE"
-xcrun devicectl list devices 2>/dev/null
+# Listed is not reachable. A device stays in `devicectl list devices` long after
+# it was last plugged in, as "available (paired)", and `device info details`
+# answers for one of those too — so both of the obvious probes pass on a device
+# nothing can be installed to. The state column is the one that does not.
+device_row=$(
+  remote_sh <<EOF 2>/dev/null || true
+xcrun devicectl list devices 2>/dev/null | grep "$DEVICE"
 EOF
-then
-  printf '  %s✓%s the phone (%s) is connected\n' "$GREEN" "$RESET" "$DEVICE"
-else
-  warn "the phone is not visible to the Mac. Cable it, unlock it, and re-run."
+)
+if [[ -z "$device_row" ]]; then
+  warn "device $DEVICE is not visible to the Mac at all."
+  note "Cable it, unlock it, trust the Mac if it asks, and re-run."
   exit 1
+elif ! grep -qw connected <<<"$device_row"; then
+  warn "device $DEVICE is known to the Mac but not connected."
+  note "  $(sed 's/  */ /g' <<<"$device_row")"
+  say ""
+  note "Paired is not reachable: nothing can be installed to it and \`log collect\`"
+  note "has nothing to collect from. Cable it, unlock it, and re-run."
+  exit 1
+else
+  printf '  %s✓%s the device (%s) is connected\n' "$GREEN" "$RESET" "$DEVICE"
 fi
 
 # Asked once, read twice. The UDID is what `log collect` needs; the model and
@@ -546,8 +615,16 @@ if [[ -z "$DEVICE_LABEL" ]]; then
   DEVICE_LABEL="${probed_name:-${probed_type:-unknown device}}"
   [[ -n "${probed_os:-}" ]] && DEVICE_LABEL="$DEVICE_LABEL, ${probed_type:-iOS} $probed_os"
 fi
-write_env X_DEVICE_LABEL "$DEVICE_LABEL"
 printf '  %s✓%s it is a %s\n' "$GREEN" "$RESET" "$DEVICE_LABEL"
+
+if [[ -n "${FREEDOMFROM_PREFLIGHT_ONLY:-}" ]]; then
+  say ""
+  note "FREEDOMFROM_PREFLIGHT_ONLY is set. Nothing has been written and nothing"
+  note "on the device has been touched. Stopping here."
+  exit 0
+fi
+
+write_env X_DEVICE_LABEL "$DEVICE_LABEL"
 
 say ""
 say "You will also need, before the commitment is armed:"
@@ -637,14 +714,27 @@ if confirm "Is a commitment from an earlier attempt at THIS run still armed?"; t
   say ""
   DEADLINE_AT=""
   while :; do
-    ask X_DEADLINE "What wall-clock time does it end? (24h, e.g. 14:35)"
+    ask X_DEADLINE "What wall-clock time does it end? (e.g. 14:35, or 2:35pm)"
     if DEADLINE_AT=$(deadline_epoch "$X_DEADLINE"); then
+      if ambiguous_clock "$X_DEADLINE"; then
+        # The screen it was copied off shows a 12-hour clock on a US locale, so
+        # a bare 1-to-12 hour is genuinely two different instants. Asking costs
+        # a second; being twelve hours wrong costs X5.
+        warn "'$X_DEADLINE' could be either half of the day, and the app's own"
+        warn "'until' line is a 12-hour clock on this locale."
+        note "  reading it as $(date -d "@$DEADLINE_AT" '+%H:%M %Z')"
+        if ! confirm "Is that the right one?"; then
+          note "Answer it again with am or pm on the end, e.g. 4:25pm."
+          DEADLINE_AT=""
+          continue
+        fi
+      fi
       write_env X_DEADLINE "$X_DEADLINE"
       note "reading that as $(date -d "@$DEADLINE_AT" '+%F %H:%M:%S %Z')"
       break
     fi
     DEADLINE_AT=""
-    warn "'$X_DEADLINE' is not a clock time. Answer like 14:35."
+    warn "'$X_DEADLINE' is not a clock time. Answer like 14:35 or 2:35pm."
     confirm "Skip the check and judge the wait yourself?" && break
   done
   # Unknown, and it must not be guessed: X1b compares the mark against this, and
@@ -668,8 +758,21 @@ else
 
   DEADLINE_AT=""
   while :; do
-    ask X_DEADLINE "What did the 'until' line say? (24h clock, e.g. 14:35)"
+    ask X_DEADLINE "What did the 'until' line say? (copy it, am/pm and all)"
     if DEADLINE_AT=$(deadline_epoch "$X_DEADLINE"); then
+      if ambiguous_clock "$X_DEADLINE"; then
+        # The screen it was copied off shows a 12-hour clock on a US locale, so
+        # a bare 1-to-12 hour is genuinely two different instants. Asking costs
+        # a second; being twelve hours wrong costs X5.
+        warn "'$X_DEADLINE' could be either half of the day, and the app's own"
+        warn "'until' line is a 12-hour clock on this locale."
+        note "  reading it as $(date -d "@$DEADLINE_AT" '+%H:%M %Z')"
+        if ! confirm "Is that the right one?"; then
+          note "Answer it again with am or pm on the end, e.g. 4:25pm."
+          DEADLINE_AT=""
+          continue
+        fi
+      fi
       write_env X_DEADLINE "$X_DEADLINE"
       note "reading that as $(date -d "@$DEADLINE_AT" '+%F %H:%M:%S %Z')"
       if (( DEADLINE_AT <= COMMIT_AT )); then
@@ -680,7 +783,7 @@ else
       break
     fi
     DEADLINE_AT=""
-    warn "'$X_DEADLINE' is not a clock time. Answer like 14:35."
+    warn "'$X_DEADLINE' is not a clock time. Answer like 14:35 or 2:35pm."
     confirm "Skip the check and judge the wait yourself?" && break
   done
 fi

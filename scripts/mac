@@ -220,11 +220,27 @@ EOF
     return 3
   fi
 
-  if ! remote_signing <<EOF >/dev/null 2>&1
-xcrun devicectl device info details --device $DEVICE
+  # `device info details` answers for a device that was cabled once and is not
+  # cabled now: it stays paired, and the call succeeds against stale pairing
+  # records. So this asks the list for the state column instead, which is the
+  # only thing that distinguishes reachable from remembered.
+  local device_row
+  device_row=$(remote_signing <<EOF 2>/dev/null | grep "$DEVICE" || true
+xcrun devicectl list devices 2>/dev/null
 EOF
-  then
-    echo "Device $DEVICE is not reachable. Someone has to cable it to the Mac: issue #13 fixed that devices are plugged in only when installing." >&2
+  )
+  if [[ -z "$device_row" ]]; then
+    echo "Device $DEVICE is not visible to the Mac at all. Someone has to cable it: issue #13 fixed that devices are plugged in only when installing." >&2
+    return 4
+  fi
+  if ! grep -qw connected <<<"$device_row"; then
+    cat >&2 <<EOF
+Device $DEVICE is known to the Mac but not connected.
+
+  $(sed 's/  */ /g' <<<"$device_row")
+
+Paired is not reachable. Cable it, unlock it, and re-run.
+EOF
     return 4
   fi
 
