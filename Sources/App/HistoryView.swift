@@ -11,6 +11,13 @@ import SwiftUI
 struct HistoryView: View {
     @Bindable var model: AppModel
 
+    /// A spur is a place you go and come back from (ADR 0007), and this is the
+    /// only one that had no way back. The erase empties the screen, and the
+    /// link that reached it is gone the moment it does — Targets shows it only
+    /// while there is history — so what was left was a screen nothing could
+    /// reach, whose one remaining control erased nothing.
+    @Environment(\.dismiss) private var dismiss
+
     /// Fixed, and longer than any commit hold: clean slate buys the largest
     /// irreversible thing in the app and scales with nothing (ADR 0007).
     private let eraseHold: TimeInterval = 6
@@ -29,6 +36,7 @@ struct HistoryView: View {
 
             HoldToConfirm(title: "hold to erase", duration: eraseHold) {
                 model.cleanSlate()
+                dismiss()
             }
             .padding(.top, 20)
         }

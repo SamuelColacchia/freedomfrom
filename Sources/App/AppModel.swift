@@ -96,28 +96,65 @@ final class AppModel {
         }
         hasReadRecord = true
 
-        await reconcile(reinstalled: reinstalled)
+        await reconcile(.launch, reinstalled: reinstalled)
     }
 
     func onForeground() async {
         log.woke("foreground")
-        await reconcile(reinstalled: false)
+        await reconcile(.foreground, reinstalled: false)
     }
 
-    /// Observes what this launch can, then runs the shared reconciliation.
+    /// Which wake this reconciliation is for, and therefore whether the
+    /// authorization status it reads is worth anything.
+    ///
+    /// The two are the same reconciliation and differ only in what they may
+    /// conclude, so this is a parameter rather than two routines. It carries
+    /// the same two words the log does.
+    enum Wake: String {
+        case launch
+        case foreground
+
+        /// A cold launch reads a status that `FamilyControls` has not loaded
+        /// yet (#54, hardware check C8). A foreground is a process that has
+        /// been alive, so its read means what it says — hardware check X1
+        /// watched one report a real revoke six seconds after it happened.
+        var statusHasSettled: Bool { self == .foreground }
+    }
+
+    /// Observes what this wake can, then runs the shared reconciliation.
     ///
     /// Authorization is re-requested on every launch while a commitment runs,
     /// so a moment of weakness does not end a month of commitment. Declining
     /// the re-request is accepted and not pursued.
-    private func reconcile(reinstalled: Bool) async {
-        let authorized = Self.isAuthorized
+    ///
+    /// The mark is made twice over, from two different readings, and neither is
+    /// the raw launch read that used to make it. The first is this wake's own,
+    /// believed only when the wake is one that can be believed. The second is
+    /// taken after `requestAuthorization` has returned, which forces the
+    /// round-trip that settles the status — on an approved app it is a no-op
+    /// that asks nothing, and it is the call this app was already making.
+    private func reconcile(_ wake: Wake, reinstalled: Bool) async {
         log.authorization(String(describing: AuthorizationCenter.shared.authorizationStatus))
 
-        apply(await offMainActor(brokenObserved: reinstalled || !authorized))
+        let seen = BreakObservation(
+            reinstalled: reinstalled,
+            unauthorized: !Self.isAuthorized,
+            statusHasSettled: wake.statusHasSettled
+        )
+        apply(await offMainActor(brokenObserved: seen.isEvidenceOfABreak))
 
         guard record.active != nil, !Self.isAuthorized else { return }
         await requestAuthorization()
-        if Self.isAuthorized { apply(await offMainActor()) }
+
+        // Settled by the request, whichever way it went, so this reading is
+        // believed unconditionally. A launch that only looked unauthorized
+        // reaches here approved and marks nothing, which is the whole of #54.
+        let afterAsking = BreakObservation(
+            reinstalled: false,
+            unauthorized: !Self.isAuthorized,
+            statusHasSettled: true
+        )
+        apply(await offMainActor(brokenObserved: afterAsking.isEvidenceOfABreak))
     }
 
     /// A reconciliation touches the Keychain, five `ManagedSettings` writes —
