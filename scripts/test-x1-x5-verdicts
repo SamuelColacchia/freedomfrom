@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+#
+# Drives the verdict chain of `scripts/hardware-x1-x5` without a phone.
+#
+# The chain is the part of that wizard nobody can rehearse. It runs once, at the
+# end of a run that revoked Screen Time access and deleted the app, and it is
+# the only thing that turns that into rows. A branch that is wrong there costs
+# the whole run, and this run costs more than the clean one to repeat: it leaves
+# the phone with a broken commitment and a consumed first run behind it.
+#
+# One branch costs more than the run. X4's red fires ADR 0005's amendment and
+# takes degradation out of v1 as an observable state, and no amount of noticing
+# afterwards puts it back.
+#
+# So this extracts the real span out of the wizard, between its two `verdicts`
+# markers, and runs it under `set -euo pipefail` against answer sets a real run
+# produces. Nothing here is a copy of the logic; a fix that is not in the wizard
+# does not pass.
+#
+# What it cannot do: say whether a row is *true*. It says the chain reaches an
+# end, writes five rows, and fires an amendment only where one is bound.
+
+set -uo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WIZARD="$REPO/scripts/hardware-x1-x5"
+SPAN=$(mktemp); trap 'rm -f "$SPAN"' EXIT
+
+awk '/^# >>> verdicts begin/ { on = 1; next } /^# <<< verdicts end/ { on = 0 } on' \
+  "$WIZARD" > "$SPAN"
+
+if [[ ! -s "$SPAN" ]]; then
+  printf 'could not find the verdict markers in %s\n' "$WIZARD" >&2
+  exit 2
+fi
+
+PASS=0; FAIL=0
+
+# The five rows a complete run writes. A chain that stops early writes fewer,
+# which is what an unbound variable under `set -u` looks like from out here.
+ROWS="X1 X2 X3 X4 X5"
+
+# A run that went the way the checklist expects: a commitment running, a revoke
+# that reads as denied on a settled foreground, a prompt that came back, a
+# reinstall that re-armed with its tokens intact, and a clean slate that took
+# what ADR 0008 says it takes. Every case below is this with something changed,
+# so a case says only what it is about.
+#
+# The mark lands before the revoke, which is #54 and is the expected shape until
+# that is fixed.
+CLEAN='
+X1_RUNNING_BEFORE=y X1_COVERAGE_BEFORE="1 of 1 covered" X1_RUNNING_AFTER=y
+X2_PROMPT=y X2_GRANTED=y
+X3_DELETED=y X3_SCREEN=a
+X4_SHIELD=a
+X5_HISTORY=a X5_HISTORY_GONE=y X5_DRAFT_GONE=y X5_FIRSTRUN=n
+MARKS=1 MARK_AT=1000 REVOKE_AT=2000 DEADLINES=1
+AUTH_AFTER_REVOKE=Denied AUTH_SETTLED=yes
+LAUNCH_STATES="Not Determined" FGROUND_STATES="Approved/Denied"
+REARM_ACTIVE=yes REARM_ENFORCED=yes X4_RESOLVED=1 X4_NAMED=1
+released=yes late_by=3
+'
+
+# chain SETUP prints one `ROW <id> = <result>` per row written and one
+# `AMEND <file>` per ADR amended, or nothing at all if it fell over.
+chain() {
+  (
+    set -euo pipefail
+    RECORDED=(); AMENDED=(); FOLLOWUP=(); EXPIRED=()
+    RED=""; GREEN=""; RESET=""; BOLD=""; DIM=""; YELLOW=""
+    record_result() { builtin printf 'ROW %s = %s\n' "$1" "$2"; }
+    amend_adr() { cat >/dev/null; builtin printf 'AMEND %s\n' "$1"; }
+    was_expired() {
+      local c
+      for c in ${EXPIRED[@]+"${EXPIRED[@]}"}; do [[ "$c" == "$1" ]] && return 0; done
+      return 1
+    }
+    # Marked, not just recorded. The expired path and the never-observed path
+    # write the same two words into the table, so a case asserting only those
+    # words passes whichever branch ran — which is how a dropped `was_expired`
+    # guard survives a green suite. The extra line is what a case asserts on.
+    expired_note() {
+      builtin printf 'EXPIRED-ROW %s\n' "$1"
+      record_result "$1" "Inconclusive, re-run"
+    }
+    note() { :; }; say() { :; }; warn() { :; }
+    printf() { :; }   # the chain's own progress printing, silenced
+    eval "$1"
+    source "$SPAN"
+  ) 2>&1
+}
+
+# case NAME SETUP [EXPECT…] — every case asserts the five rows and a zero exit;
+# each EXPECT is an extra grep-style assertion, `+PATTERN` for present and
+# `-PATTERN` for absent.
+case_() {
+  local name="$1" setup="$2"; shift 2
+  local out rc problems=()
+  out=$(chain "$setup"); rc=$?
+
+  (( rc == 0 )) || problems+=("the chain exited $rc")
+
+  local id
+  for id in $ROWS; do
+    grep -qE "^ROW $id = " <<<"$out" || problems+=("no row for $id")
+  done
+
+  local want
+  for want in "$@"; do
+    case "$want" in
+      +*) grep -qF "${want#+}" <<<"$out" || problems+=("expected '${want#+}'") ;;
+      -*) grep -qF "${want#-}" <<<"$out" && problems+=("did not expect '${want#-}'") ;;
+    esac
+  done
+
+  if (( ${#problems[@]} == 0 )); then
+    PASS=$((PASS + 1))
+    printf '  ok    %s\n' "$name"
+  else
+    FAIL=$((FAIL + 1))
+    printf '  FAIL  %s\n' "$name"
+    local p; for p in "${problems[@]}"; do printf '          %s\n' "$p"; done
+    sed 's/^/          | /' <<<"$out"
+  fi
+}
+
+printf '\nThe verdict chain of scripts/hardware-x1-x5\n\n'
+
+printf 'A run that finished\n'
+case_ "everything the checklist expects" "$CLEAN" \
+  "+ROW X1 = **Green**" "+ROW X2 = **Green**" "+ROW X3 = **Green**" \
+  "+ROW X5 = **Green**" "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+printf '\nX1a, which is the fact the run exists to get\n'
+# The one output nothing in the repo can produce without a phone. Both states
+# are results; what must not happen is a row that reports either from a read
+# taken at launch, because that read is the bug itself.
+case_ "a revoke that reads as denied" "$CLEAN" \
+  "+ROW X1 = **Green**, and \`Denied\` after a revoke"
+
+case_ "a revoke that reads as not determined" "$CLEAN
+AUTH_AFTER_REVOKE=\"Not Determined\" FGROUND_STATES=\"Approved/Not Determined\"" \
+  "+ROW X1 = **Green**, and \`Not Determined\` after a revoke"
+
+case_ "only a launch read after the revoke is not an answer" "$CLEAN
+AUTH_SETTLED=no AUTH_AFTER_REVOKE=\"Not Determined\"" \
+  "+ROW X1 = Inconclusive, re-run" "-AMEND"
+
+case_ "no authorization read after the revoke at all" "$CLEAN
+AUTH_AFTER_REVOKE= AUTH_SETTLED=no" \
+  "+ROW X1 = Inconclusive, re-run"
+
+case_ "the run began with nothing running" "$CLEAN
+X1_RUNNING_BEFORE=n" \
+  "+ROW X1 = Inconclusive, re-run"
+
+printf '\nThe deadline, which nothing may move\n'
+case_ "two deadlines in one archive outranks the rest of X1" "$CLEAN
+DEADLINES=2" \
+  "+ROW X1 = **Red**" "+ROW X3 = Inconclusive, re-run" "-AMEND"
+
+printf '\nThe mark, whose cause #54 has taken away\n'
+case_ "marked before the revoke, which is #54 on hardware" "$CLEAN
+MARK_AT=1000 REVOKE_AT=2000" \
+  "+ROW X1 = **Green**"
+
+case_ "marked after the revoke, which proves nothing either" "$CLEAN
+MARK_AT=3000 REVOKE_AT=2000" \
+  "+ROW X1 = **Green**"
+
+case_ "marked more than once is not green" "$CLEAN
+MARKS=2" \
+  "+ROW X1 = Inconclusive, re-run"
+
+case_ "never marked at all is not green" "$CLEAN
+MARKS=0 MARK_AT=" \
+  "+ROW X1 = Inconclusive, re-run"
+
+case_ "the countdown was gone afterwards, though the record was not" "$CLEAN
+X1_RUNNING_AFTER=n" \
+  "+ROW X1 = Inconclusive, re-run"
+
+printf '\nX2, pre-decided either way\n'
+case_ "no prompt from a revoked state" "$CLEAN
+X2_PROMPT=n X2_GRANTED=n REARM_ENFORCED=no" \
+  "+ROW X2 = **Red**, and pre-decided" "-AMEND"
+
+case_ "prompted but not granted" "$CLEAN
+X2_GRANTED=n" \
+  "+ROW X2 = **Green**, prompt only"
+
+printf '\nX3, the record outliving deletion\n'
+case_ "the app would not delete, so X4 has nothing either" "$CLEAN
+X3_DELETED=n X3_SCREEN= REARM_ACTIVE=no REARM_ENFORCED=no X4_RESOLVED= X4_NAMED=" \
+  "+ROW X3 = Not reached" "+ROW X4 = Not reached" "-AMEND"
+
+case_ "the record did not survive deletion" "$CLEAN
+X3_SCREEN=b REARM_ACTIVE=no REARM_ENFORCED=no X4_RESOLVED= X4_NAMED=" \
+  "+ROW X3 = **Red**" "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+case_ "it re-armed but landed somewhere else" "$CLEAN
+X3_SCREEN=c" \
+  "+ROW X3 = Inconclusive, re-run"
+
+printf '\nX4, the only red that deletes a code path\n'
+case_ "a token churned and the count noticed" "$CLEAN
+X4_RESOLVED=0 X4_NAMED=1 X4_SHIELD=b" \
+  "+ROW X4 = **Green**" "-AMEND"
+
+case_ "nothing churned, which is a re-run and not a red" "$CLEAN
+X4_SHIELD=a" \
+  "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+# The whole point of reading the shield beside the count. A full count with no
+# shield is the app being wrong out loud, and it is the only observable shape of
+# undetectability there is.
+case_ "full count and no shield fires ADR 0005" "$CLEAN
+X4_SHIELD=b" \
+  "+ROW X4 = **Red**" "+AMEND 0005"
+
+# An unauthorized phone shields nothing, so the missing shield says nothing
+# about tokens. Scoring that as the amendment would delete degradation on the
+# strength of X2 having gone red.
+case_ "no shield because nothing was enforced is not the amendment" "$CLEAN
+X2_PROMPT=n X2_GRANTED=n REARM_ENFORCED=no X4_SHIELD=b" \
+  "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+case_ "no coverage line after the reinstall" "$CLEAN
+X4_RESOLVED= X4_NAMED=" \
+  "+ROW X4 = Inconclusive, re-run" "-AMEND"
+
+printf '\nX5, which is about the clean slate\n'
+case_ "no release was logged" "$CLEAN
+released=no late_by=" \
+  "+ROW X5 = Inconclusive, re-run"
+
+case_ "a commitment that ended and filed no row" "$CLEAN
+X5_HISTORY=c" \
+  "+ROW X5 = **Red**"
+
+case_ "the history row read completed, which is recorded not scored" "$CLEAN
+X5_HISTORY=b" \
+  "+ROW X5 = **Green**"
+
+case_ "the clean slate left the history behind" "$CLEAN
+X5_HISTORY_GONE=n" \
+  "+ROW X5 = **Red**"
+
+case_ "the clean slate left the draft behind" "$CLEAN
+X5_DRAFT_GONE=n" \
+  "+ROW X5 = **Red**"
+
+case_ "the clean slate reset first run, which ADR 0008 forbids" "$CLEAN
+X5_FIRSTRUN=y" \
+  "+ROW X5 = **Red**"
+
+printf '\nThe deadline runs out part-way\n'
+# check_open is called by X1, X1 again, X2, X3 and X4 in that order, and the
+# clock only moves one way, so what a run produces is a suffix. X4 is reached
+# only when X3 deleted, so a run that expires at X3 skips X4 without ever
+# calling check_open — the same asymmetry that crashed the clean run's chain.
+case_ "out of time at X4" "$CLEAN
+unset X4_SHIELD
+EXPIRED=(X4)" \
+  "+EXPIRED-ROW X4" "-AMEND"
+
+case_ "out of time at X3, so X4 was never asked" "$CLEAN
+unset X3_DELETED X3_SCREEN X4_SHIELD
+X4_RESOLVED= X4_NAMED= REARM_ACTIVE=no REARM_ENFORCED=no
+EXPIRED=(X3 X4)" \
+  "+EXPIRED-ROW X3" "+EXPIRED-ROW X4" "-AMEND"
+
+case_ "out of time at X2, so nothing after it was asked" "$CLEAN
+unset X2_PROMPT X2_GRANTED X3_DELETED X3_SCREEN X4_SHIELD
+X4_RESOLVED= X4_NAMED= REARM_ACTIVE=no REARM_ENFORCED=no
+EXPIRED=(X2 X3 X4)" \
+  "+EXPIRED-ROW X2" "+EXPIRED-ROW X3" "-AMEND"
+
+case_ "out of time before the revoke, so the whole run is a suffix" "$CLEAN
+unset X1_RUNNING_BEFORE X1_RUNNING_AFTER X2_PROMPT X2_GRANTED X3_DELETED X3_SCREEN X4_SHIELD
+AUTH_AFTER_REVOKE= AUTH_SETTLED=no REVOKE_AT=
+X4_RESOLVED= X4_NAMED= REARM_ACTIVE=no REARM_ENFORCED=no
+EXPIRED=(X1 X2 X3 X4)" \
+  "+EXPIRED-ROW X1" "+EXPIRED-ROW X2" "+EXPIRED-ROW X3" "+EXPIRED-ROW X4" "-AMEND"
+
+# The three cases above assert the branch and not just its words, so a run that
+# reaches the same two words down the never-observed path fails them. This one
+# holds the other side of that line: an unexpired run must not take it.
+case_ "a run that finished takes no expired branch" "$CLEAN" \
+  "-EXPIRED-ROW"
+
+printf '\n%s passed, %s failed\n\n' "$PASS" "$FAIL"
+(( FAIL == 0 ))

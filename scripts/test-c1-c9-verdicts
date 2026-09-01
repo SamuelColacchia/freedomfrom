@@ -69,7 +69,14 @@ chain() {
       for c in ${EXPIRED[@]+"${EXPIRED[@]}"}; do [[ "$c" == "$1" ]] && return 0; done
       return 1
     }
-    expired_note() { record_result "$1" "Inconclusive, re-run"; }
+    # Marked, not just recorded. The expired path and the never-observed path
+    # write the same two words into the table, so a case asserting only those
+    # words passes whichever branch ran — which is how a dropped `was_expired`
+    # guard survives a green suite. The extra line is what a case asserts on.
+    expired_note() {
+      builtin printf 'EXPIRED-ROW %s\n' "$1"
+      record_result "$1" "Inconclusive, re-run"
+    }
     note() { :; }; say() { :; }; warn() { :; }
     printf() { :; }   # the chain's own progress printing, silenced
     eval "$1"
@@ -151,28 +158,34 @@ case_ "out of time at C5, after the gate came back unblocked" "$CLEAN
 C3A_BLOCKED=n
 unset C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
 EXPIRED=(C5 C6 C7)" \
-  "+ROW C3a = Inconclusive, re-run" "-AMEND"
+  "+ROW C3a = Inconclusive, re-run" "+EXPIRED-ROW C5" "-AMEND"
 
 case_ "out of time at C5, after the gate came back green" "$CLEAN
 unset C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
 EXPIRED=(C3b C4 C5 C6 C7)" \
-  "+ROW C3a = **Green**" "+ROW C5 = Inconclusive, re-run" "-AMEND"
+  "+ROW C3a = **Green**" "+EXPIRED-ROW C5" "-AMEND"
 
 case_ "out of time at C3a, so C3b and C4 were skipped rather than expired" "$CLEAN
 unset C3A_BLOCKED C3A_CONTROL C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
 EXPIRED=(C3a C5 C6 C7)" \
-  "+ROW C3a = Inconclusive, re-run" "+ROW C3b = Not reached" \
+  "+EXPIRED-ROW C3a" "+ROW C3b = Not reached" \
   "+ROW C4 = Not reached" "-AMEND"
 
 case_ "out of time at C2, so nothing after it was asked" "$CLEAN
 unset C2_SHIELD C3A_BLOCKED C3A_CONTROL C5_PRIVATE C6_DELETE C6_CLOCK C7_READS
 EXPIRED=(C2 C3a C5 C6 C7)" \
-  "+ROW C2 = Inconclusive, re-run" "-AMEND"
+  "+EXPIRED-ROW C2" "+EXPIRED-ROW C3a" "-AMEND"
 
 case_ "out of time at C6, with the gate green" "$CLEAN
 unset C6_DELETE C6_CLOCK C7_READS
 EXPIRED=(C6 C7)" \
-  "+ROW C6 = Inconclusive, re-run" "-AMEND"
+  "+EXPIRED-ROW C6" "-AMEND"
+
+# The five cases above assert the branch and not just its words, so a run that
+# reaches the same two words down the never-observed path fails them. This one
+# holds the other side of that line: an unexpired run must not take it.
+case_ "a run that finished takes no expired branch" "$CLEAN" \
+  "-EXPIRED-ROW"
 
 printf '\nThe consent sentence\n'
 case_ "both restrictions no-op" "$CLEAN

@@ -191,27 +191,43 @@ Wait out the deadline. Do not open the app.
 
 One longer commitment, deliberately broken. Everything here marks it, which is why it is a second commitment.
 
-**X1. Revoke authorization.**
-Settings → Screen Time → freedomfrom → revoke. Relaunch the app.
-**Green**: the commitment is marked broken exactly once, and the countdown still runs to the same deadline.
+**All of Phase 3 has a wizard: `scripts/hardware-x1-x5`.** Same shape as the clean run's: it installs, walks X1 through X5 in the forced order, prints the root-gated `log collect` line for a human to run in their own shell, reads the archive back, decides each verdict from the log and your answer together, and fills in the five rows below. Walk it rather than this page. Its verdict chain is exercised without a phone by `scripts/test-x1-x5-verdicts`.
 
-**X2. Does `requestAuthorization` re-prompt from `.denied`?**
+> **What #54 takes off this page, and what it leaves.** The app marks a running commitment broken on *any* cold launch, because it judges on an `authorizationStatus` that has not settled yet. So on this run the commitment will already be marked before anybody revokes anything, and **no check here can attribute a mark to the thing it was supposed to be testing.** Three claims survive that, and Phase 3 is now built around them rather than around the mark: that a break never moves a deadline, that the mark is recorded once rather than once per launch, and that a reinstall finds the commitment and re-arms. Everything below is worded so a green means one of those and never "the revoke did it".
+
+**X1. Revoke authorization.**
+Read the countdown first, then Settings → Screen Time → freedomfrom → revoke, then relaunch the app.
+This is three observations, not a verdict, and the first one is why the run is worth walking at all.
+- **X1a — what does the status read after a revoke?** Taken from `app`'s own `authorization state=` line on the relaunch. `Denied` and `Not Determined` are both results and neither is a failure. **This is the fact #54 turns on**: if a revoke reads `Denied`, the break signal is `.denied` and only `.denied`, and a `Not Determined` at launch is no evidence of anything. If a revoke also reads `Not Determined`, the status cannot carry the signal at launch at all and the mark has to wait for it to settle.
+- **X1b — was it already marked before the revoke?** Read the history or the log for this commitment before touching Settings. Already-marked is the expected answer while #54 stands, and observing it here is the on-device confirmation #54 was filed without.
+- **X1c — is the mark idempotent?** `markBroken` returns false on a second call, so `marked broken` should appear exactly once in the archive however many times the app was launched. This half of the original check survives #54 untouched, because it is about the record and not about the cause.
+
+**Green**: the archive holds exactly one `marked broken` for this commitment, and the countdown still runs to the same deadline it had before the revoke. **No ADR amendment is bound to any outcome here** — ADR 0005 says a break marks a running commitment and does not end one, and every result above leaves that standing. What a red produces is a bug, and the bug already has a number.
+
+**X2. Does `requestAuthorization` prompt again after a revoke?**
 On that relaunch.
 **Green**: a prompt appears; granting it re-arms coverage.
 **Red → amendment**: none needed. ADR 0005 pre-decided this degrades into the never-ask option at the cost of one wasted call per launch. Record it and move on.
 
+> Worded as "after a revoke" rather than "from `.denied`", because X1a is what establishes which state a revoke actually leaves. A check that names the state in its own question cannot be walked before the check that discovers it.
+
 **X3. Delete and reinstall.**
 Only possible after X1, because a working `denyAppRemoval` blocks it. Delete the app, reinstall, launch.
-**Green**: the app finds the commitment still running, marks it broken, and re-arms with no comment. The deadline is unchanged.
+**Green**: the app finds the commitment still running and re-arms with no comment, and the deadline is unchanged. That the reinstall also marks it broken proves nothing while #54 stands — the marker file is gone *and* the status is unsettled, so two sufficient causes fire at once and neither can be told from the other. What this row is for is the record outliving deletion, which is the foundation ADR 0002 puts everything else on.
 
 **X4. Is an unresolvable token detectable at all?**
-On that same relaunch, compare the resolved count against the named count.
-**Green**: if any token churned across the reinstall, coverage shrinks and the commitment is marked degraded.
-**Red → amendment**: if unresolvable tokens are indistinguishable from resolvable ones, the whole degradation path is unreachable. Coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
+On that same relaunch, compare the resolved count against the named count — **and open the blocked app.** Two readings, because the count alone cannot fail.
+**Green**: coverage shrank. A token churned across the reinstall and the app noticed, so degradation is reachable.
+**Inconclusive**: coverage is full *and* the shield is still up. Nothing churned, so this run produced no unresolvable token and says nothing about whether one would be detected. Re-run; it is not a red.
+**Red → amendment**: coverage is full and **the shield is gone**. The token stopped resolving and the count did not notice, which is the only shape in which undetectability is observable at all. The whole degradation path is then unreachable: coverage states the named count, ADR 0005's degraded row is annotated as unobservable, and ADR 0008's "degraded at birth" becomes moot. Nothing is built to detect what cannot be detected.
+
+> **The count cannot fail on its own, which is why the shield is read beside it.** A churned token mints a different handle, so the app learns of it by minting and comparing — and a full count is equally consistent with "nothing churned" and "everything churned invisibly". Only enforcement can tell those apart, because a shield that is gone while the count says one-of-one is the app being wrong out loud.
 
 **X5. History and clean slate.**
 Let it reach its deadline. Check the history row. Then run a clean slate.
-**Green**: the row reads broken; the clean slate erases the history and the draft together, on the longest hold in the app.
+**Green**: the clean slate erases the history and the draft together, on the longest hold in the app, and leaves first run alone.
+
+> **The history half of this row is uninformative, and says so rather than being dropped.** The row will read broken, and this commitment really was broken, so the answer is right — but it would also read broken had nobody touched it, because of #54. A green here is evidence about the clean slate and about nothing else. Once #54 is fixed, this half becomes a real check again and is worth re-walking with the rest of X1.
 
 **X6. Capture.** Sysdiagnose, filter, save.
 
@@ -236,8 +252,8 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 | C6 | Restrictions bite under `.individual` | **Green** | Deleting another app was refused, and 'Set Automatically' could not be switched off. The human's observation. There is no read-back of effective state (ADR 0005), so no log line corroborates either half | None |
 | C7 | Coverage reads true | **Green** | The countdown read `2 of 2 covered`, which is the `coverage resolved=1 of named=1` in the archive plus the one typed domain. It states what was enforced, not what was named | None |
 | C8 | The release arrives, and how late | Inconclusive, re-run | `released late_by_seconds=1` is in the archive, and the history row reads broken rather than completed | None — not a result |
-| X1 | Revoke marks broken once | | | |
-| X2 | Re-prompt from `.denied` | | | |
+| X1 | What a revoke reads as, and the mark's arity | | | |
+| X2 | Re-prompt after a revoke | | | |
 | X3 | Delete and reinstall re-arms | | | |
 | X4 | Unresolvable tokens are detectable | | | |
 | X5 | History and clean slate | | | |
