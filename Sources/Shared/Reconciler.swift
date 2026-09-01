@@ -44,9 +44,15 @@ struct Reconciler: Sendable {
         try? store.read()
     }
 
-    /// `brokenObserved` carries what only a launch can see — a revoked
-    /// authorization, or a reinstall — into the same read-modify-write as the
-    /// reconciliation, rather than a second one that could interleave.
+    /// `brokenObserved` carries the one thing only a launch can see — an absent
+    /// install marker — into the same read-modify-write as the reconciliation,
+    /// rather than a second one that could interleave.
+    ///
+    /// It used to carry a revoked authorization too, read off
+    /// `authorizationStatus` by the caller. That is gone: the framework has not
+    /// loaded that value on a young process, so it marked a running commitment
+    /// broken on every cold launch (#54). A revoke reaches the record through
+    /// `reArm` now, from a registration the system refused.
     ///
     /// It is a flag rather than a closure so the mark and its log line stay
     /// here beside every other mark, and so this whole call can cross to a
