@@ -1126,6 +1126,11 @@ fi
 # a resumed run there is no commit stamp, and scoping to nothing is the honest
 # answer: the counts then cover the archive and X1c says so rather than
 # counting an earlier commitment's mark against this one.
+# >>> parse begin — pure: it reads $app, $everything and the three stamps, and
+# sets the scalars the verdict chain reads. No ssh, no prompts.
+# scripts/test-x1-x5-verdicts drives this span against a real archive, because
+# the chain was tested and the parsing that feeds it was not — and a loose
+# pattern here scores a row red without any branch of the chain being wrong.
 if [[ -n "${COMMIT_AT:-}" ]]; then
   run_app=$(since "$COMMIT_AT" <<<"$app")
   run_all=$(since "$COMMIT_AT" <<<"$everything")
@@ -1141,7 +1146,15 @@ MARK_AT=$(first_epoch "marked broken" <<<"$run_all" || true)
 
 # One deadline, or more than one. A break must never move it, and this is the
 # same fact X1 and X3 both need, parsed once.
-DEADLINES=$(grep -o "deadline [0-9TZ:-]*" <<<"$run_all" | sort -u | grep -c . || true)
+#
+# The timestamp is spelled out rather than left to a character class, because
+# `store mutation deadline mirror landed=true` also begins "deadline " and a
+# loose pattern counts it as a second, empty deadline — which reads as one that
+# moved, and scores X1 red on a run where nothing moved at all. The first real
+# archive this was pointed at did exactly that.
+DEADLINES=$(
+  grep -oE "deadline [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z" <<<"$run_all" | sort -u | grep -c . || true
+)
 
 # The settled read after the revoke. A foreground is a process that has been
 # alive; a launch is the unsettled one #54 is about.
@@ -1175,6 +1188,8 @@ fi
 
 released=no; grep -q "released late_by_seconds=" <<<"$run_all" && released=yes
 late_by=$(grep -o "late_by_seconds=[0-9]*" <<<"$run_all" | tail -n1 | cut -d= -f2)
+
+# <<< parse end
 
 note "scoped to this commitment:  $SCOPED"
 note "marked broken, times:       $MARKS"

@@ -316,5 +316,68 @@ EXPIRED=(X1 X2 X3 X4)" \
 case_ "a run that finished takes no expired branch" "$CLEAN" \
   "-EXPIRED-ROW"
 
+printf '\nThe parsing that feeds the chain\n'
+# The chain was tested and the parsing was not, and that is where the first real
+# archive found a bug: `deadline [0-9TZ:-]*` also matches the "deadline " in
+# `store mutation deadline mirror landed=true`, so a run whose deadline never
+# moved counted two of them and scored X1 red. No branch of the chain was
+# wrong. Nothing in the chain's own cases could have caught it, because they set
+# DEADLINES by hand.
+#
+# So this drives the parse span against a real archive committed beside it.
+PARSE=$(mktemp); trap 'rm -f "$SPAN" "$PARSE"' EXIT
+awk '/^# >>> parse begin/ { on = 1; next } /^# <<< parse end/ { on = 0 } on' \
+  "$WIZARD" > "$PARSE"
+
+parse_case() {
+  local name="$1" logfile="$2" setup="$3"; shift 3
+  local out problems=()
+
+  if [[ ! -s "$logfile" ]]; then
+    printf '  skip  %s (no %s)\n' "$name" "$logfile"
+    return
+  fi
+
+  out=$(
+    (
+      set -euo pipefail
+      # The helpers the span calls, taken from the wizard rather than retyped.
+      eval "$(awk '/^since\(\) \{/,/^\}/'       "$WIZARD")"
+      eval "$(awk '/^line_epoch\(\) \{/,/^\}/'  "$WIZARD")"
+      eval "$(awk '/^first_epoch\(\) \{/,/^\}/' "$WIZARD")"
+      eval "$(awk '/^auth_reads\(\) \{/,/^\}/'  "$WIZARD")"
+      app=$(grep ':app\]' "$logfile" || true)
+      everything=$(cat "$logfile")
+      COMMIT_AT="" REVOKE_AT="" REINSTALL_AT=""
+      eval "$setup"
+      source "$PARSE"
+      printf 'DEADLINES=%s\nMARKS=%s\nRELEASED=%s\nAUTH=%s\nSETTLED=%s\nREARM_ACTIVE=%s\nCOV=%s of %s\n' \
+        "$DEADLINES" "$MARKS" "$released" "${AUTH_AFTER_REVOKE:-none}" \
+        "$AUTH_SETTLED" "$REARM_ACTIVE" "${X4_RESOLVED:-?}" "${X4_NAMED:-?}"
+    ) 2>&1
+  )
+
+  local want
+  for want in "$@"; do
+    grep -qF "$want" <<<"$out" || problems+=("expected '$want'")
+  done
+
+  if (( ${#problems[@]} == 0 )); then
+    PASS=$((PASS + 1)); printf '  ok    %s\n' "$name"
+  else
+    FAIL=$((FAIL + 1)); printf '  FAIL  %s\n' "$name"
+    local p; for p in "${problems[@]}"; do printf '          %s\n' "$p"; done
+    sed 's/^/          | /' <<<"$out"
+  fi
+}
+
+# The iPad run of 31 August: one commitment, revoked, deleted, reinstalled, and
+# released three seconds late. Its stamps are in docs/evidence/answers-x1-x5.env.
+parse_case "a real archive reads one deadline, not one per mirror write" \
+  "$REPO/docs/evidence/x1-x5.log" \
+  'COMMIT_AT=1788232430 REVOKE_AT=1788232510 REINSTALL_AT=1788232618' \
+  "DEADLINES=1" "MARKS=1" "RELEASED=yes" \
+  "AUTH=Not Determined" "SETTLED=yes" "REARM_ACTIVE=yes" "COV=1 of 1"
+
 printf '\n%s passed, %s failed\n\n' "$PASS" "$FAIL"
 (( FAIL == 0 ))

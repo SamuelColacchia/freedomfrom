@@ -1,0 +1,7 @@
+Timestamp               Ty Process[PID:TID]
+2026-08-31 20:18:32.567 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-31 20:18:32.568 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-31 20:18:32.568 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-09-01T03:54:03Z
+2026-08-31 20:18:32.601 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] woke reason=shielding application
+2026-08-31 20:18:32.601 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] record read found=true active=true
+2026-08-31 20:18:32.601 Df ShieldConfig[2784:1684f7] [com.samuelcolacchia.freedomfrom:shieldconfig] deadline 2026-09-01T03:54:03Z
