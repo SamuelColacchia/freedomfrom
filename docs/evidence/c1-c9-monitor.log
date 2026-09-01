@@ -1,0 +1,7 @@
+Timestamp               Ty Process[PID:TID]
+2026-08-30 18:59:52.527 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] woke reason=intervalDidStart
+2026-08-30 18:59:52.532 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] record read found=true active=true
+2026-08-30 18:59:52.532 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] deadline 2026-08-31T01:59:52Z
+2026-08-30 18:59:52.587 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] store mutation release landed=true
+2026-08-30 18:59:52.587 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] released late_by_seconds=1
+2026-08-30 18:59:52.595 Df Monitor[8118:8e4dd] [com.samuelcolacchia.freedomfrom:monitor] record written

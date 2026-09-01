@@ -227,15 +227,15 @@ Fill in and commit. A red result should link the ADR amendment it triggered.
 | S1 | Keychain access group from an extension (gate) | **Red, for `ShieldConfig` only** | Both `SecItem` read and write return `errSecNotAvailable` (-25291) under a signed entitlement verified identical to the app's. The Monitor reads the record fine — it released a commitment on time with the app closed | **Fired, narrowed.** App Group re-added to all three targets, carrying the deadline alone. [ADR 0002](./adr/0002-v1-target-topology-and-a-keychain-only-data-model.md) amended |
 | S2 | `ShieldConfig` can mutate the store (gate) | **Green** | `shieldconfig` logs `store mutation release landed=true`, and logged again after it, so no jetsam. **The shield being gone on the next open is the human's answer, not a log line** — the archive corroborates it only by holding no further `shieldconfig` wake, which is absence of evidence. The final window was suppressed and `monitor` logged nothing, so the extension was the only process that could have taken it | None |
 | S3 | Selection round-trips into the picker | **Red**, partially | Some tokens came back checked and some did not; Targets read 2 | **Fired.** [ADR 0008](./adr/0008-the-root-holds-a-draft.md) amended |
-| C1 | Consent sentence and prompt appear | | | |
-| C2 | The shield applies | | | |
-| C3a | The filter blocks at all (gate) | | | |
-| C3b | Which other browsers it covers | | | |
-| C4 | Bare domain versus subdomains | | | |
-| C5 | Private Browsing off while filtering | | | |
-| C6 | Restrictions bite under `.individual` | | | |
-| C7 | Coverage reads true | | | |
-| C8 | The release arrives, and how late | | | |
+| C1 | Consent sentence and prompt appear | Not observable | First run had already been consumed on this device. It shows once ever, the Keychain record outlives app deletion (ADR 0002), and clean slate deliberately does not reset it (ADR 0008), so there is no route back to that screen | None — but the sentence carrying all of this app's informed consent cannot be re-observed on a phone that has run it. C1 needs a device that never has |
+| C2 | The shield applies | **Green** | Apple's shield replaced the app, and `app` logs `store mutation enforcement landed=true` with `coverage resolved=1 of named=1`. **The shield on screen is the human's answer, not a log line** — `shieldconfig` waking corroborates it, since iOS launches that extension only while a shield is up | None |
+| C3a | The filter blocks at all (gate) | **Green** | Safari refused `metalcloak.com` while the control `wikipedia.org` loaded normally, with `store mutation enforcement landed=true` in the archive | None |
+| C3b | Which other browsers it covers | Survey | Safari **blocked**; Chrome **blocked**; Firefox **blocked**; Brave **blocked**; in-app WKWebView **blocked** | The targets step names only the browsers that blocked, and never generalizes |
+| C4 | Bare domain versus subdomains | Subdomains covered | `www.metalcloak.com` was refused; `m.metalcloak.com` does not exist, so it was not probed | The targets step may now say a bare domain covers its subdomains. Canonicalization is unchanged either way |
+| C5 | Private Browsing off while filtering | **Green** | Private Browsing was unavailable in Safari's tab switcher while the filter was applied | None |
+| C6 | Restrictions bite under `.individual` | **Green** | Deleting another app was refused, and 'Set Automatically' could not be switched off. The human's observation. There is no read-back of effective state (ADR 0005), so no log line corroborates either half | None |
+| C7 | Coverage reads true | **Green** | The countdown read `2 of 2 covered`, which is the `coverage resolved=1 of named=1` in the archive plus the one typed domain. It states what was enforced, not what was named | None |
+| C8 | The release arrives, and how late | Inconclusive, re-run | `released late_by_seconds=1` is in the archive, and the history row reads broken rather than completed | None — not a result |
 | X1 | Revoke marks broken once | | | |
 | X2 | Re-prompt from `.denied` | | | |
 | X3 | Delete and reinstall re-arms | | | |
