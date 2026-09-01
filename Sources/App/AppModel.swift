@@ -202,13 +202,22 @@ final class AppModel {
         persist()
     }
 
+    /// Written like the domains are, and for the same reason: ADR 0008 makes
+    /// the draft the typed domains *and* the chosen length, and a length that
+    /// lives only in memory is not part of a draft that survives anything.
+    ///
+    /// It used to ride on the backgrounding write alone, which held right up
+    /// until somebody force-quit from the switcher — hardware check S3's
+    /// re-walk found the domains coming back and the length gone.
     func chooseLength(_ length: CommitmentLength) {
         record.draft.length = length
+        persist()
     }
 
-    /// The draft is written when a domain is committed with return, and when
-    /// the app backgrounds — so a finished domain always survives an
-    /// interruption and a half-typed one never does (ADR 0008).
+    /// The draft is written when a domain is committed with return, when a
+    /// length is chosen, and when the app backgrounds — so a finished domain
+    /// always survives an interruption and a half-typed one never does
+    /// (ADR 0008).
     ///
     /// The picker returning used to write too. It no longer has anything to
     /// write: apps left the draft when hardware check S3 came back red.

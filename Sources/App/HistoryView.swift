@@ -35,8 +35,17 @@ struct HistoryView: View {
             .scrollIndicators(.hidden)
 
             HoldToConfirm(title: "hold to erase", duration: eraseHold) {
-                model.cleanSlate()
+                // Leave before erasing, not after. `cleanSlate` empties the
+                // history, and Targets draws the link that presented this
+                // screen only while there is history — so erasing first pulls
+                // that link out of the hierarchy in the same update, and the
+                // `dismiss` that follows refers to a presentation SwiftUI has
+                // already stopped tracking. It did nothing on hardware.
+                //
+                // Dismissed first, the pop is asked for while the screen is
+                // still fully presented, and the erase lands behind it.
                 dismiss()
+                model.cleanSlate()
             }
             .padding(.top, 20)
         }
