@@ -84,7 +84,7 @@ final class AppModel {
         // Read before placing: an absent marker beside a running commitment is
         // the only evidence that this install is not the one that committed.
         let reinstalled = !marker.isPresent
-        marker.place()
+        log.installMarker(found: !reinstalled, placed: marker.place())
 
         // The read first and alone, so the right screen is on the glass before
         // anything talks to a daemon.

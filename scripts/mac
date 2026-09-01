@@ -28,6 +28,25 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PASS=""
 [[ -n "${FREEDOMFROM_HARDWARE_PASS:-}" ]] && PASS="FREEDOMFROM_HARDWARE_PASS=HARDWARE_PASS"
 
+# Said out loud, every time, because the variable outlives the session that set
+# it. An exported FREEDOMFROM_HARDWARE_PASS from an earlier run silently put a
+# release control on the phone and cost a fifteen-minute check its result: the
+# wizards refuse to score such a build, but only after reading the archive,
+# which is after the run is spent. This is the last moment it is still cheap.
+announce_hardware_pass() {
+  [[ -n "$PASS" ]] || return 0
+  cat >&2 <<EOF
+
+  ⚠  FREEDOMFROM_HARDWARE_PASS is set, so this build carries a release control.
+
+     It announces itself on every launch, and no hardware check is scored from
+     a build that has one — the product has no such action anywhere (ADR 0001).
+
+     For a run you intend to score:  unset FREEDOMFROM_HARDWARE_PASS
+
+EOF
+}
+
 # Run a script on the Mac. The script arrives on stdin, so nothing is quoted twice.
 remote() { ssh -o BatchMode=yes "$HOST" bash -s; }
 
@@ -42,6 +61,7 @@ sync_tree() {
 }
 
 cmd_build() {
+  announce_hardware_pass
   sync_tree
   remote <<EOF
 set -euo pipefail
@@ -86,6 +106,7 @@ EOF
 }
 
 cmd_run() {
+  announce_hardware_pass
   cmd_build
   remote <<EOF
 set -euo pipefail
@@ -157,6 +178,7 @@ EOF
 # solved by deleting the socket, and saying so when it is not costs a person
 # the unlock they had already done.
 cmd_device() {
+  announce_hardware_pass
   if [[ ! -S "$SIGN_SOCKET" ]]; then
     cat >&2 <<EOF
 No signing socket at $SIGN_SOCKET
