@@ -394,18 +394,59 @@ observe() {
   write_env "$key" "$input"
 }
 
+# remaining_epoch HH:MM:SS turns the countdown's own reading into a deadline.
+#
+# It asks for what is on screen. This used to ask for the "until" line off the
+# Commit screen, which by the time the question is put is two screens back —
+# while the countdown, showing a duration in exactly the shape of a time of
+# day, is what the human is actually looking at. A run answered `00:39:40`
+# meaning thirty-nine minutes and had it read as twenty to one in the morning,
+# which left the wizard waiting for a deadline four hours after the real one.
+#
+# Three parts required, because that is what the countdown draws. `39:40` would
+# be ambiguous between thirty-nine hours and thirty-nine minutes, and there is
+# no screen in the app that produces it.
+remaining_epoch() {
+  local raw h m s
+  raw="${1// /}"
+  [[ "$raw" =~ ^([0-9]{1,3}):([0-5][0-9]):([0-5][0-9])$ ]] || return 1
+  h=${BASH_REMATCH[1]}; m=${BASH_REMATCH[2]}; s=${BASH_REMATCH[3]}
+  printf '%s' $(( $(date +%s) + 10#$h * 3600 + 10#$m * 60 + 10#$s ))
+}
+
 # wait_until EPOCH holds the human here until the deadline has actually passed.
+#
+# Returns 2 when they want to re-enter it. A wait that can only be left with
+# Ctrl-C is a wait that loses the run it was in the middle of scoring, and a
+# wrong deadline is exactly the moment you need out of one — so this reads a
+# keypress rather than sleeping through it.
 wait_until() {
-  local at="$1" now left
+  local at="$1" now left key choice
   while :; do
     now=$(date +%s)
     (( now >= at )) && break
     left=$(( at - now ))
     if [[ -t 1 ]]; then
-      printf '\r  %swaiting %02d:%02d for the deadline…%s\033[K' \
+      printf '\r  %swaiting %02d:%02d — Enter to take control%s\033[K' \
         "$DIM" $(( left / 60 )) $(( left % 60 )) "$RESET"
     fi
-    sleep 1
+    if read -r -t 1 key; then
+      [[ -t 1 ]] && printf '\r\033[K'
+      say ""
+      say "Waiting for $(date -d "@$at" '+%H:%M:%S'), which is $(( left / 60 ))m ${left#-} seconds away."
+      note "  c  carry on waiting"
+      note "  d  it has actually passed — the countdown is gone from the device"
+      note "  r  that deadline is wrong, let me re-enter it"
+      printf '  %sc / d / r:%s ' "$BOLD" "$RESET"
+      read -r choice || choice=c
+      case "$choice" in
+        d*|D*)
+          printf '  %s✓%s taking your word for it: the deadline has passed.\n' "$GREEN" "$RESET"
+          return 0 ;;
+        r*|R*) return 2 ;;
+        *) note "Still waiting." ;;
+      esac
+    fi
   done
   [[ -t 1 ]] && printf '\r\033[K'
   printf '  %s✓%s the deadline has passed.\n' "$GREEN" "$RESET"
@@ -677,16 +718,40 @@ say "Which is it?"
 note "  a  'Begin', under two lines about blocking what you choose"
 note "  b  Targets: a picker, a place to type a domain"
 note "  c  a countdown — something is still running from an earlier session"
-observe C1_SCREEN "a / b / c:"
 
-if [[ "$C1_SCREEN" == a ]]; then
+# The one place this wizard keeps an answer across a re-run, and it is not a
+# default being offered. First run cannot be observed twice, so on the second
+# pass the honest answer to "which screen" is `c` — and taking it would erase
+# the observation the first pass made, of a thing that cannot be reproduced on
+# any device that has run the app. `observe` refuses defaults everywhere else
+# for good reasons; this is the case those reasons do not cover.
+c1_seen=$(_existing C1_SCREEN || true)
+if [[ "$c1_seen" == a ]]; then
+  say ""
+  note "An earlier pass of this run already took C1 on this device, and first"
+  note "run cannot be shown twice. Keeping what it saw rather than asking you"
+  note "to describe a screen that no longer exists."
+  C1_SCREEN=a
+  C1_SENTENCE=$(_existing C1_SENTENCE || true)
+  C1_PROMPT=$(_existing C1_PROMPT || true)
+  note "  the sentence was there: ${C1_SENTENCE:-unanswered}"
+  note "  the prompt appeared:    ${C1_PROMPT:-unanswered}"
+  pause
+else
+  observe C1_SCREEN "a / b / c:"
+fi
+
+if [[ "$C1_SCREEN" == a && "$c1_seen" != a ]]; then
   say ""
   say "Read the screen before you touch it."
   observe C1_SENTENCE "Does it say no app on this device can be deleted while it runs? (y/n)"
   step "Now tap 'Begin'."
   observe C1_PROMPT "Did iOS ask for Screen Time access? (y/n)"
   note "Grant it. Refusing is X2's business, later in this run."
-else
+elif [[ "$C1_SCREEN" != a ]]; then
+  # Only clear when nothing was seen. The restored branch above has already put
+  # a real observation in these, and blanking it here would undo the whole
+  # point of restoring it.
   C1_SENTENCE=""; C1_PROMPT=""
   say ""
   note "First run has already been consumed here, so C1 cannot be taken on this"
@@ -758,8 +823,14 @@ else
 
   DEADLINE_AT=""
   while :; do
-    ask X_DEADLINE "What did the 'until' line say? (copy it, am/pm and all)"
-    if DEADLINE_AT=$(deadline_epoch "$X_DEADLINE"); then
+    say ""
+    step "Read the big timer on the countdown. It counts down, as HH:MM:SS."
+    note "  Not the 'until' line: that was on the previous screen and is gone."
+    ask X_REMAINING "What does the countdown read right now? (e.g. 00:39:40)"
+    if DEADLINE_AT=$(remaining_epoch "$X_REMAINING"); then
+      write_env X_REMAINING "$X_REMAINING"
+      X_DEADLINE=$(date -d "@$DEADLINE_AT" '+%H:%M:%S')
+      note "that puts the deadline at $X_DEADLINE"
       if ambiguous_clock "$X_DEADLINE"; then
         # The screen it was copied off shows a 12-hour clock on a US locale, so
         # a bare 1-to-12 hour is genuinely two different instants. Asking costs
@@ -783,7 +854,7 @@ else
       break
     fi
     DEADLINE_AT=""
-    warn "'$X_DEADLINE' is not a clock time. Answer like 14:35 or 2:35pm."
+    warn "'$X_REMAINING' is not a countdown. Copy it as it is drawn: 00:39:40."
     confirm "Skip the check and judge the wait yourself?" && break
   done
 fi
@@ -944,7 +1015,18 @@ note "when the deadline passes, the app takes the release and the question of"
 note "whether one arrives on its own goes unasked."
 say ""
 if [[ -n "${DEADLINE_AT:-}" ]]; then
-  wait_until "$DEADLINE_AT"
+  while :; do
+    wait_rc=0; wait_until "$DEADLINE_AT" || wait_rc=$?
+    (( wait_rc == 2 )) || break
+    step "Read the countdown again, as HH:MM:SS."
+    ask X_REMAINING "What does it read now?"
+    if DEADLINE_AT=$(remaining_epoch "$X_REMAINING"); then
+      write_env X_REMAINING "$X_REMAINING"
+      note "that puts the deadline at $(date -d "@$DEADLINE_AT" '+%H:%M:%S')"
+    else
+      warn "'$X_REMAINING' is not a countdown, so nothing changed."
+    fi
+  done
 else
   pause "Press Enter once ${X_DEADLINE:-the deadline} has passed."
 fi
@@ -962,7 +1044,16 @@ note "Either of the first two is the expected answer while #54 stands. The"
 note "commitment really was broken, and it would read broken had nobody touched"
 note "it, so this half is recorded rather than scored."
 say ""
-step "Now run a clean slate, and answer for what it left behind."
+say ""
+say "Now the clean slate. It is the button at the bottom of this same History"
+say "screen, and it is the largest irreversible thing in the app:"
+say ""
+step "Hold 'hold to erase' for six seconds."
+note "  Six, fixed, and longer than any commit hold, because it scales with"
+note "  nothing (ADR 0007). It erases the history and the draft together and"
+note "  ends nothing: no commitment is lifted by it."
+warn "The row you just read goes with it. Answer the question above first."
+say ""
 observe X5_HISTORY_GONE "Is the history empty afterwards? (y/n)"
 observe X5_DRAFT_GONE "Are the typed domains and the chosen length gone too? (y/n)"
 observe X5_FIRSTRUN "Did it send you back to first run — 'Begin'? (y/n)"
