@@ -1070,8 +1070,15 @@ elif [[ "$C3A_BLOCKED" =~ ^[Yy] && "$C3A_CONTROL" =~ ^[Yy] ]]; then
     *)     sub="$www; \`m.$C_DOMAIN\` does not exist, so it was not probed" ;;
   esac
   if [[ "$C4_WWW" =~ ^[Yy] ]]; then
+    # Licensed to exactly the hosts that were probed, which is the point of
+    # naming them. The row used to authorise "a bare domain covers its
+    # subdomains" off a run that had refused `www.` and skipped `m.` because it
+    # did not exist — a rule from one example. That wording reached the app and
+    # review caught it there rather than here.
+    covered="\`www.\`"
+    [[ "$C4_M" =~ ^[Yy] ]] && covered="\`www.\` and \`m.\`"
     record_result C4 "Subdomains covered" "$sub" \
-      "The targets step may now say a bare domain covers its subdomains. Canonicalization is unchanged either way"
+      "The targets step may now say a bare domain covers $covered, naming only what was probed. Canonicalization is unchanged either way"
   else
     record_result C4 "Subdomains not covered" "$sub" \
       "Canonicalization stands unchanged (ADR 0006 refuses to guess at matching rules) and the user types each host"

@@ -58,9 +58,27 @@ struct TargetsView: View {
             domains
 
             if !model.draft.domains.isEmpty {
-                Text("Safari's Private Browsing switches off while a commitment with websites runs.")
+                VStack(alignment: .leading, spacing: 8) {
+                    // Named one by one, and never generalized. These five are
+                    // exactly what hardware check C3b watched refuse a typed
+                    // domain; a browser nobody tried is one this screen does
+                    // not mention.
+                    Text(
+                        "While it is authorized, a typed website is blocked in Safari, Chrome, Firefox and Brave, and in links opened inside other apps."
+                    )
                     .whisper()
-                    .padding(.top, 16)
+
+                    // `www.` and nothing wider. C4 refused `www.` and never
+                    // probed `m.`, which does not exist on the domain it was
+                    // walked against — so one subdomain was covered, and
+                    // "subdomains" would be a rule nobody watched hold.
+                    Text("A bare domain covers its www. form.")
+                        .whisper()
+
+                    Text("Safari's Private Browsing switches off with it.")
+                        .whisper()
+                }
+                .padding(.top, 16)
             }
 
             Spacer()

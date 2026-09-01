@@ -22,7 +22,7 @@ struct EscapeView: View {
                 .padding(.top, 24)
 
             Text(
-                "Deleting the app does not end it, and while this runs you cannot delete any app anyway. The clock is held automatic."
+                "Deleting the app does not end it. While it is authorized, no app on this phone can be deleted and the clock is held automatic. Revoking ends both."
             )
             .whisper()
             .padding(.top, 16)
