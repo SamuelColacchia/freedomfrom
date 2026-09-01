@@ -2,53 +2,51 @@ import Testing
 
 @testable import FreedomFromKit
 
-@Suite("A break is only read off a status that has settled")
+@Suite("A break is read off what happened, never off the authorization status")
 struct BreakObservationTests {
-    private func seen(
-        reinstalled: Bool = false,
-        unauthorized: Bool = false,
-        settled: Bool = true
-    ) -> BreakObservation {
+    private func seen(reinstalled: Bool = false, refused: Bool = false) -> BreakObservation {
         BreakObservation(
-            reinstalled: reinstalled, unauthorized: unauthorized, statusHasSettled: settled)
+            reinstalled: reinstalled, enforcementRefusedAsUnauthorized: refused)
     }
 
-    @Test("a cold launch reading unauthorized is not evidence of anything")
-    func coldLaunchIsNotEvidence() {
-        // This is the whole bug. The status has not loaded on a process that
-        // young, so it reads unauthorized for a commitment nobody touched —
-        // and the app marked one broken every time it was opened.
-        #expect(seen(unauthorized: true, settled: false).isEvidenceOfABreak == false)
+    @Test("an ordinary reconciliation is silent")
+    func nothingHappenedIsNotABreak() {
+        #expect(seen().isEvidenceOfABreak == false)
     }
 
-    @Test("a settled read of unauthorized is a break")
-    func settledUnauthorizedIsABreak() {
-        // Hardware check X1: a foreground six seconds after a real revoke, on
-        // a process alive five minutes, read unauthorized and meant it.
-        #expect(seen(unauthorized: true, settled: true).isEvidenceOfABreak)
+    @Test("a refused registration is a break")
+    func refusedRegistrationIsABreak() {
+        // Hardware check X1 watched this arrive six seconds after a real
+        // revoke: DeviceActivity declining to start monitoring because the app
+        // is no longer authorized.
+        #expect(seen(refused: true).isEvidenceOfABreak)
     }
 
-    @Test("an authorized read is never a break, settled or not")
-    func authorizedIsNeverABreak() {
-        #expect(seen(unauthorized: false, settled: true).isEvidenceOfABreak == false)
-        #expect(seen(unauthorized: false, settled: false).isEvidenceOfABreak == false)
-    }
-
-    @Test("a reinstall is a break whatever the status was doing")
+    @Test("a reinstall is a break on its own")
     func reinstallStandsAlone() {
-        // The marker file is absent beside a running commitment, which no
-        // amount of daemon latency explains (ADR 0005). It does not need the
-        // status to have settled, and it does not need it to be unauthorized.
-        #expect(seen(reinstalled: true, unauthorized: false, settled: false).isEvidenceOfABreak)
-        #expect(seen(reinstalled: true, unauthorized: true, settled: false).isEvidenceOfABreak)
-        #expect(seen(reinstalled: true, unauthorized: false, settled: true).isEvidenceOfABreak)
+        #expect(seen(reinstalled: true).isEvidenceOfABreak)
     }
 
-    @Test("an ordinary launch of a kept commitment is silent")
-    func theCaseThatWasBroken() {
-        // C8 came back inconclusive because of this one: a commitment ran its
-        // full term and filed as broken, having been looked at once.
-        let openingTheApp = seen(reinstalled: false, unauthorized: true, settled: false)
+    @Test("both at once is still one break")
+    func bothTogether() {
+        // A reinstall on a revoked device produces the pair, and `markBroken`
+        // records once and never re-marks (ADR 0005) — so what matters here is
+        // that neither signal cancels the other.
+        #expect(seen(reinstalled: true, refused: true).isEvidenceOfABreak)
+    }
+
+    @Test("the authorization status is not a term in this")
+    func statusIsNotAnInput() {
+        // The regression guard for #54. Every cold launch reads the status as
+        // unauthorized on a process too young to have loaded it, and a real
+        // revoke reads exactly the same string (X1a) — so no reading of it can
+        // be an input here. This asserts the shape of the type: two signals,
+        // both of them things that happened.
+        let openingTheApp = seen(reinstalled: false, refused: false)
         #expect(openingTheApp.isEvidenceOfABreak == false)
+
+        let everySignal = BreakObservation(
+            reinstalled: false, enforcementRefusedAsUnauthorized: false)
+        #expect(everySignal == openingTheApp)
     }
 }

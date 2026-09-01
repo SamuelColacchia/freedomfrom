@@ -1,3 +1,4 @@
+import DeviceActivity
 import FamilyControls
 import Foundation
 import FreedomFromKit
@@ -111,6 +112,10 @@ struct Reconciler: Sendable {
         }
 
         if let window = Reconciliation.nextWindow(deadline: active.deadline, now: Date()) {
+            // A window always exists while a commitment runs — `nextWindow`
+            // returns nil only once the deadline has passed, and that path
+            // released above — so this is asked on every reconciliation of a
+            // live commitment, which is what makes it a usable signal.
             #if HARDWARE_PASS
                 // Hardware check S2 asks whether `ShieldConfig` can mutate the
                 // store when it is the process that discovers a passed deadline.
@@ -131,9 +136,34 @@ struct Reconciler: Sendable {
                 log.windowRegistered(window)
             } catch {
                 log.windowRegistrationFailed(String(describing: error))
+
+                // The break signal, and the only one that is an act rather than
+                // a cached reading. `DeviceActivity` refusing to start
+                // monitoring *because* the app is not authorized is the system
+                // behaving on a revoke, where `authorizationStatus` merely
+                // reports a value it may not have loaded yet (#54, X1a).
+                //
+                // Matched on the case rather than on its description, because a
+                // string that changes in an OS release would silently stop
+                // marking breaks, and nothing would fail.
+                let seen = BreakObservation(
+                    reinstalled: false,
+                    enforcementRefusedAsUnauthorized: Self.isUnauthorized(error)
+                )
+                if seen.isEvidenceOfABreak, record.markBroken() { log.marked(.broken) }
             }
         }
         return coverage
+    }
+
+    /// Whether `DeviceActivity` refused because authorization is gone, as
+    /// opposed to any of the other ways registering a window can fail — too
+    /// many activities, an unsatisfiable schedule — none of which say anything
+    /// about a commitment being broken.
+    private static func isUnauthorized(_ error: Error) -> Bool {
+        guard let refusal = error as? DeviceActivityCenter.MonitoringError else { return false }
+        if case .unauthorized = refusal { return true }
+        return false
     }
 
     /// Reports whether the write landed, because one caller cannot continue
