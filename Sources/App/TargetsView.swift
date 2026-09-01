@@ -61,15 +61,23 @@ struct TargetsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     // Named one by one, and never generalized. These five are
                     // exactly what hardware check C3b watched refuse a typed
-                    // domain; a browser nobody tried is a browser this screen
-                    // does not mention. C4 is the second sentence: `www.` was
-                    // refused, so a bare domain is worth typing on its own.
+                    // domain; a browser nobody tried is one this screen does
+                    // not mention.
                     Text(
-                        "While it is authorized, a typed website is blocked in Safari, Chrome, Firefox and Brave, and in links opened inside other apps. A bare domain covers its subdomains."
+                        "While it is authorized, a typed website is blocked in Safari, Chrome, Firefox and Brave, and in links opened inside other apps."
                     )
+                    .whisper()
+
+                    // `www.` and nothing wider. C4 refused `www.` and never
+                    // probed `m.`, which does not exist on the domain it was
+                    // walked against — so one subdomain was covered, and
+                    // "subdomains" would be a rule nobody watched hold.
+                    Text("A bare domain covers its www. form.")
+                        .whisper()
+
                     Text("Safari's Private Browsing switches off with it.")
+                        .whisper()
                 }
-                .whisper()
                 .padding(.top, 16)
             }
 

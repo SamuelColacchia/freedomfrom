@@ -27,7 +27,7 @@ A supervised device can have Screen Time locked behind a passcode you do not hol
 Each of these was walked on hardware before being written down, and the results table is in [`docs/hardware-smoke-checklist.md`](docs/hardware-smoke-checklist.md).
 
 - **Apps you pick are shielded.** Apple's shield replaces them.
-- **Websites you type are blocked** in Safari, Chrome, Firefox and Brave, and in links opened inside other apps. A bare domain covers its subdomains. Those five are the browsers that were observed to block; the app names no others and does not generalize from them.
+- **Websites you type are blocked** in Safari, Chrome, Firefox and Brave, and in links opened inside other apps. A bare domain covers its `www.` form. Those five are the browsers that were observed to block, and `www.` is the only subdomain that was probed — the app names no others and does not generalize from either list.
 - **Safari's Private Browsing switches off** while a commitment with websites runs.
 - **No app on the phone can be deleted** — not just this one — and the clock is held automatic. Both were observed to bite under `.individual` authorization.
 - **The release arrives on its own**, late rather than early. Two seconds late on the last run, with the app closed.
@@ -41,16 +41,9 @@ Each of these was walked on hardware before being written down, and the results 
 
 ## Building it
 
-iOS and macOS work happens on a remote Mac. `scripts/mac` drives it; `AGENTS.md` has the verbs and the reasoning.
+iOS and macOS work happens on a remote Mac, driven by `scripts/mac`. The verbs, their costs, and the reasons the loop is shaped this way are in [`AGENTS.md`](AGENTS.md) — including which of them can be run by an agent and which need a person with a cable.
 
-```
-scripts/mac build     # compile for the simulator
-scripts/mac test      # the kit's suite
-scripts/mac uitest    # drive the app on the simulator
-scripts/mac device    # sign and install on a connected device. Needs a person
-```
-
-The hardware checks are walked by a person on a cabled phone, with a wizard per phase — `scripts/hardware-s2-s3`, `scripts/hardware-c1-c9`, `scripts/hardware-x1-x5`. No agent can close them: several checks are somebody looking at a screen, and the log capture is root-gated.
+The hardware checks are walked by a person, with a wizard per phase. No agent can close them: several checks are somebody looking at a screen, and the log capture is root-gated.
 
 ## Reading the reasoning
 
