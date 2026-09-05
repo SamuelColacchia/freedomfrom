@@ -15,26 +15,28 @@ Apple describes `DeviceActivitySchedule` as a calendar-based schedule for **when
 
 This supports the existing failure direction: enforcement must be applied independently and release reconciliation must compare the stored absolute deadline with `now`.
 
-### 2. Apple documents a monitoring limit and schedule validation, but not overlap semantics
+### 2. Apple documents numeric monitoring bounds and cross-store composition
 
-Apple exposes `MonitoringError.excessiveActivities`, `intervalTooLong`, and `intervalTooShort` as possible failures when starting monitoring. The official search result describes the first as monitoring too many activities and the latter two as invalid interval lengths. The public API documentation does **not** state that overlapping non-repeating intervals merge, cancel, serialize, or invoke callbacks in a defined order.
+Apple documents that the minimum interval length for monitoring device activity is **15 minutes**, and the maximum interval length for monitoring device activity events is **one week**.
 
-- [MonitoringError](https://developer.apple.com/documentation/deviceactivity/deviceactivitycenter/monitoringerror)
-- [excessiveActivities](https://developer.apple.com/documentation/deviceactivity/deviceactivitycenter/monitoringerror/excessiveactivities)
-- [stopMonitoring(_:)](https://developer.apple.com/documentation/deviceactivity/deviceactivitycenter/stopmonitoring(_:))
+- [intervalTooShort](https://developer.apple.com/tutorials/data/documentation/deviceactivity/deviceactivitycenter/monitoringerror/intervaltooshort.json) — “The minimum interval length for monitoring device activity is fifteen minutes.”
+- [intervalTooLong](https://developer.apple.com/tutorials/data/documentation/deviceactivity/deviceactivitycenter/monitoringerror/intervaltoolong.json) — “The maximum interval length for monitoring device activity events is one week.”
 
-**Conclusion for downstream concurrency decisions:** do not infer that multiple commitments can safely own independent schedules. The API permits named activities and stopping named activities, but overlapping callback and replacement behavior remains undocumented. A human device probe is required before choosing a concurrency model.
+These are monitoring-window bounds, not necessarily commitment-duration bounds. A one-minute **commitment** can still be represented by applying Managed Settings immediately and reconciling against a one-minute absolute deadline; a one-minute **Device Activity monitoring interval** is rejected by the documented minimum. The repository already encodes the distinction: commitment length clamps to 15 minutes ([Length.swift](https://github.com/SamuelColacchia/freedomfrom/blob/7425ab3eac403f293fa3dea721499479a2df767f/FreedomFromKit/Sources/FreedomFromKit/Length.swift#L1-L12)), while each watchdog window is seven days ([Types.swift](https://github.com/SamuelColacchia/freedomfrom/blob/7425ab3eac403f293fa3dea721499479a2df767f/FreedomFromKit/Sources/FreedomFromKit/Types.swift#L156-L164)).
 
-### 3. `ManagedSettingsStore` supports named store composition, but Apple does not define conflict resolution for overlapping writers
+Apple’s WWDC22 Screen Time presentation documents the previously missing composition fact: up to **50 Managed Settings stores per process**, each with a unique name; named stores are shared between the app and its extensions; and **“The most restrictive setting always wins.”** The presentation demonstrates clearing a Social store while a Gaming store continues shielding gaming websites.
 
-Apple documents a `ManagedSettingsStore` as a data store that applies settings to the current user or device. Setting a value to `nil` deletes that app’s configuration for that setting, while the system determines its effective state from all settings it receives. Apple separately documents that stores with the same `ManagedSettingsStore.Name` share settings and distinct names create distinct stores.
-
+- [WWDC22 “What’s new in Screen Time API”, Managed Settings Store segment](https://developer.apple.com/videos/play/wwdc2022/110336/) (approximately 5:13)
 - [ManagedSettingsStore](https://developer.apple.com/documentation/managedsettings/managedsettingsstore.md)
 - [ManagedSettingsStore.Name](https://developer.apple.com/documentation/managedsettings/managedsettingsstore/name.md)
 
-This establishes that a single named store is a valid composition mechanism, but leaves an important product question unresolved: if commitment A and B overlap and A releases by setting shared fields to `nil`, Apple documents no per-writer ownership or subtraction operation. Separate named stores may avoid that particular overwrite, but Apple does not document how effective settings combine across stores for shields, filters, or restrictions.
+**Conclusion for downstream concurrency decisions:** cross-store composition is documented and viable at the framework level. The product still needs to choose whether each commitment gets a named store, but the earlier report’s claim that composition was wholly undocumented was wrong. A device probe remains appropriate for this app’s exact combination of shields, web filters, restrictions, and release timing; it is not a reason to treat one shared store as the only settled design.
 
-**Conclusion for downstream concurrency decisions:** preserve one shared-store commitment as the only settled design. Any multi-commitment composition needs a hardware experiment covering same-target and disjoint-target overlap, release of the earlier commitment, and whether the later commitment remains effective.
+### 3. What remains to verify for this app’s composition
+
+The WWDC22 demonstration settles the framework-level rule: uniquely named stores are shared across the app and extensions, up to 50 stores may exist per process, and the most restrictive setting wins. What remains unknown is not whether cross-store composition exists, but how this app’s particular combination behaves in a real release cycle: shields, web filters, device-wide restrictions, and one commitment releasing while another remains active.
+
+That is a hardware validation question, not an absence of platform support. The product-design ticket should choose the store ownership model explicitly rather than inherit the current single-store implementation by default.
 
 ### 4. Indefinite commitments are not represented by the documented schedule API
 
@@ -54,12 +56,12 @@ This supports treating authorization loss as an escape route and requiring recon
 
 The following facts are not settled by documentation or by this Linux-side inspection:
 
-1. Whether two overlapping `DeviceActivity` activities reliably coexist on the target iOS release, and callback ordering at overlap boundaries.
-2. Whether distinct named `ManagedSettingsStore`s combine monotonically, replace one another, or have setting-specific effective-state behavior when one releases.
+1. Whether two overlapping `DeviceActivity` activities reliably coexist on the target iOS release, and callback ordering at overlap boundaries. This is separate from the documented named-store composition rule.
+2. Whether this app’s combination of shields, web filters, and device-wide restrictions has the expected effective state when one named store releases while another remains active.
 3. Whether a long-running or effectively indefinite commitment remains enforced across reboot, app deletion/reinstallation, authorization revocation/regrant, OS update, and prolonged device inactivity.
 4. Whether a far-future schedule is accepted and delivered after powered-down periods. Apple’s docs do not promise this.
 
-Required device probes: run paired commitments with (a) disjoint targets and (b) one shared target; release the earlier commitment while the later remains active; inspect both enforcement and logs; repeat across reboot and app termination. Separately attempt the longest practical interval and document whether `startMonitoring` accepts it and whether callbacks arrive. Do not mark these rows from simulator or source inspection alone.
+Required device probes: run paired commitments with (a) disjoint targets and (b) one shared target, using separate named stores; release the earlier commitment while the later remains active; inspect both enforcement and logs; repeat across reboot and app termination. Separately attempt the longest practical interval and document whether `startMonitoring` accepts it and whether callbacks arrive. Do not mark these rows from simulator or source inspection alone.
 
 ## Repository application
 
