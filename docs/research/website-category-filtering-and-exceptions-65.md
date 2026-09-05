@@ -1,48 +1,51 @@
 # Website-category filtering and false-positive exceptions
 
-Research for [issue #65](https://github.com/SamuelColacchia/freedomfrom/issues/65), downstream of [map #62](https://github.com/SamuelColacchia/freedomfrom/issues/62). Researched 2026-09-04. No implementation or product decision is made here.
+Research for [issue #65](https://github.com/SamuelColacchia/freedomfrom/issues/65), updated 2026-09-05. No implementation or product decision is made here.
 
-## Findings
+## Apple’s four distinct mechanisms
 
-### 1. Apple exposes an adult-content policy, not an arbitrary taxonomy
+### 1. Apple adult-content auto filter
 
-Apple’s public `WebContentSettings` API describes filtering by specific web domains and exposes `FilterPolicy`; the documented policy surface is an Apple-managed web-content policy, not a developer-defined set of labels such as “social”, “news”, or “work”.
+`ManagedSettings.WebContentSettings` exposes `blockedByFilter`; its `FilterPolicy.auto(_:except:)` is exact Swift API: `auto(Set<WebDomain> = [], except: Set<WebDomain> = [])`. Apple says it blocks adult content, additionally blocks the supplied `domains`, and allows the supplied `except` domains, overriding both the adult filter and `domains`; each set is capped at 50 domains.
 
-Sources: [WebContentSettings](https://developer.apple.com/documentation/managedsettings/webcontentsettings), [WebContentSettings.FilterPolicy](https://developer.apple.com/documentation/managedsettings/webcontentsettings/filterpolicy).
+Sources: [WebContentSettings](https://developer.apple.com/documentation/managedsettings/webcontentsettings.md), [FilterPolicy](https://developer.apple.com/documentation/managedsettings/webcontentsettings/filterpolicy.md), [auto(_:except:)](https://developer.apple.com/documentation/managedsettings/webcontentsettings/filterpolicy/auto(_:except:).md).
 
-Apple’s user-facing Screen Time controls explicitly offer unrestricted access, limiting adult websites, or only approved websites. This confirms the built-in classification is adult-content filtering, while allow/deny lists are explicit domain mechanisms. Source: [Apple Support, prevent inappropriate web content](https://support.apple.com/en-us/105121).
+### 2. Bounded arbitrary taxonomy as explicit domain sets
 
-**Limit:** the public API does not document a supported way to supply an arbitrary category taxonomy or replace Apple’s classifier. “Category” in Family Controls is a selectable Apple activity category token, not an app-authored web classifier. Source: [FamilyActivitySelection](https://developer.apple.com/documentation/familycontrols/familyactivityselection).
+An externally curated category such as “social” or “news” can be mapped to a bounded `Set<WebDomain>` and enforced with `specific(Set<WebDomain>)`, whose documented cap is 50 domains. Or it can be combined with `auto(domains:except:)` to add up to 50 category domains while retaining Apple’s adult filter and up to 50 exceptions. This is a bounded list, not a dynamic classifier: coverage depends on the list, domain matching, and update policy chosen later.
 
-### 2. Viable enforcement mechanisms
+Source: [specific(_:)](https://developer.apple.com/documentation/managedsettings/webcontentsettings/filterpolicy/specific(_:).md).
 
-- **Apple adult filter:** use Managed Settings’ web-content filter policy. This is the only first-party category-like web mechanism identified, and its taxonomy/decisions are Apple-owned.
-- **Explicit domain deny list:** use `WebContentSettings` with app-maintained domains. This is deterministic and suitable for known false positives, but it is not category filtering.
-- **Explicit allow list / approved websites:** model “only these sites” as a domain allow list. It is the strictest false-positive avoidance mechanism, but requires maintaining every desired domain and may not cover arbitrary navigations. Source: [Apple Support](https://support.apple.com/en-us/105121).
-- **Network Extension content filter:** Apple’s WWDC21 material says an on-device web content filter built with Network Extensions can filter web traffic and is installed automatically for a parental-control app. This is the only identified path for a genuinely app-owned taxonomy/classifier, but it is a separate subsystem with its own entitlement, extension, signing, review, privacy, and behavior-validation constraints. Source: [WWDC21 Meet the Screen Time API](https://developer.apple.com/videos/play/wwdc2021/10123/).
+`all(except:)` blocks all websites except up to 50 exception domains. It is an allowlist, not a category taxonomy. Source: [all(except:)](https://developer.apple.com/documentation/managedsettings/webcontentsettings/filterpolicy/all(except:).md).
 
-### 3. False-positive exception mechanisms
+### 3. Opaque Apple category tokens are shields, not current filtering
 
-- **Exact-domain exception:** remove a domain from the blocked set or add it to the permitted set. This is the clearest mechanism and aligns with Apple’s documented permitted/denied URL model.
-- **Trusted-person approval of an active exception:** represent an exception as a separate approval action, then update the locally enforced domain policy only after that approval. The Screen Time APIs provide enforcement primitives, but do not provide a trusted-person workflow, identity protocol, or remote approval service; that workflow remains application policy and is outside this research ticket’s implementation scope.
-- **Apple classifier override:** Apple documents permitted URLs that can allow a site even when considered adult, and denied URLs that block a nonadult site. This is an Apple-supported override at the explicit-URL level, not a general category exception API. Source: [Apple Support](https://support.apple.com/en-us/105121).
+`ShieldSettings.webDomainCategories` accepts `ActivityCategoryPolicy<WebDomain>?`; Apple documents up to 50 category tokens and up to 50 web-domain-token exceptions. When a matching website is visited, the system calls the shield customization extension. This produces a shield UI, not the `webContent.blockedByFilter` policy used for current web filtering.
 
-### 4. Entitlements and infrastructure constraints
+Sources: [ShieldSettings](https://developer.apple.com/documentation/managedsettings/shieldsettings.md), [webDomainCategories](https://developer.apple.com/documentation/managedsettings/shieldsettings/webdomaincategories-swift.property.md).
 
-Family Controls is required for Screen Time API parental-control features and app extensions. Apple’s configuration guidance says the capability adds `com.apple.developer.family-controls`; distribution requires requesting the entitlement for the app and each Screen Time extension. Sources: [Screen Time Technology Frameworks](https://developer.apple.com/documentation/screentimeapidocumentation), [Configuring Family Controls](https://developer.apple.com/documentation/familycontrols/configuring-family-controls).
+### 4. Custom Network Extension classifier
 
-A Network Extension content filter would require the relevant Network Extension capability/entitlement and a filter-provider extension; its exact availability and App Store distribution approval must be confirmed against the target SDK and Apple Developer account. This report does **not** assume that entitlement is granted. Gate: a human must verify the capability is available for this App ID and obtain Apple approval before choosing this path.
+Apple’s WWDC21 Screen Time session identifies an on-device Network Extensions web content filter as a route to filter web traffic. This is the custom-classifier route, but it adds a separate filter-provider extension, Network Extension entitlement/distribution approval, privacy review, and device validation. No entitlement grant is assumed here. Source: [Meet the Screen Time API](https://developer.apple.com/videos/play/wwdc2021/10123/).
 
-The repo already has an app plus Monitor and ShieldConfig extensions and Family Controls assumptions in [the build spec](https://github.com/SamuelColacchia/freedomfrom/blob/main/docs/v1-build-spec.md#L97-L112). Adding a Network Extension would change target topology and signing surface; no such change is authorized here.
+## Stores and exceptions
 
-## Recommendation-neutral decision inputs
+Named `ManagedSettingsStore`s are available from iOS 16; each store contains settings applied by the client app. Apple’s WWDC22 session states that the most restrictive setting wins across stores: clearing a Social store does not undo a Gaming store’s restriction. Therefore an exception in one store cannot override another store’s more restrictive explicit domain policy or category shield. Any trusted-person exception flow must coordinate every store that contributes the restriction, or it will appear approved while coverage remains. Sources: [ManagedSettingsStore](https://developer.apple.com/documentation/managedsettings/managedsettingsstore.md), [WWDC22](https://developer.apple.com/videos/play/wwdc2022/110336/).
 
-The viable choices for the later human decision are: (A) Apple adult filter plus exact-domain trusted-person exceptions; (B) explicit domain lists only; or (C) a separately approved Network Extension classifier. A and B use documented Managed Settings/domain primitives. C is the only route found for arbitrary taxonomies, but it has the largest entitlement, review, extension, privacy, and validation burden.
+## Viable mechanisms for later human choice
+
+- Apple adult auto filter plus explicit exceptions: strongest first-party category-like baseline; taxonomy is Apple-owned; 50 blocked domains and 50 exceptions per `auto` value.
+- Curated category-to-domain sets: arbitrary labels are possible as bounded domain lists; `specific` supports 50 domains, or `auto` can carry 50 additions and 50 exceptions. This does not classify unseen domains.
+- Opaque Apple category web shields: up to 50 category tokens and 50 domain-token exceptions; shield behavior, not a silent/current filter.
+- `all(except:)`: up to 50 allowed domains; strict allowlist.
+- Network Extension classifier: dynamic/on-device custom taxonomy route, gated on entitlement, review, extension topology, privacy, and hardware validation.
+
+Trusted-person approval of an active exception is not an Apple-provided workflow. It remains application policy, and the approval must ensure no other Managed Settings store still imposes the block. The online re-rating/filtering service remains a separate milestone and is excluded.
 
 ## Limits and unknowns
 
-1. Apple’s current public docs do not specify the adult classifier’s taxonomy, update cadence, false-positive rate, or wildcard/domain matching edge cases.
-2. The docs do not establish whether every modern browser and web view is covered identically by Managed Settings’ web filter. This requires a human device probe; do not infer it from simulator results.
-3. Network Extension entitlement availability and App Store approval are account- and submission-dependent; verify before treating C as viable.
-4. No source found documents a built-in trusted-person approval or remote exception protocol. The chosen trusted-person approval flow therefore needs a later product/security decision, not an Apple API assumption.
-5. The online re-rating/filtering service is a separate milestone and intentionally excluded from this map.
+1. Apple does not document the adult classifier taxonomy, update cadence, false-positive rate, or all domain-matching edge cases.
+2. The 50-item caps above are per documented policy/property assignment; this report does not infer a larger effective aggregate cap across stores.
+3. Browser/web-view coverage and behavior require human device probes; simulator success is not evidence.
+4. Network Extension capability availability and App Store approval are account/submission gates.
+5. Sources are Apple documentation and Apple WWDC material; licensing, privacy, offline updates, and source-list provenance are later decision inputs, not settled here.
