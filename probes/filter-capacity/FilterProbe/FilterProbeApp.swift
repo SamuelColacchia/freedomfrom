@@ -52,6 +52,7 @@ enum ProbeError: Error, CustomStringConvertible {
     case unknownScenario(String)
     case unknownPolicy(String)
     case foreignStore(String)
+    case notAuthorized(String)
 
     var description: String {
         switch self {
@@ -59,6 +60,7 @@ enum ProbeError: Error, CustomStringConvertible {
         case .unknownScenario(let id): "no scenario named \(id)"
         case .unknownPolicy(let p): "unknown policy \(p)"
         case .foreignStore(let s): "\(s) is not a probe store"
+        case .notAuthorized(let s): "authorization is \(s), so nothing was written"
         }
     }
 }
@@ -120,6 +122,19 @@ enum Probe {
         return ["scenario": id, "written": written]
     }
 
+    /// A cold launch reads `notDetermined` before the real status arrives (the
+    /// same thing #54 found in FreedomFrom), so nothing is reported or written
+    /// until it changes or five seconds pass.
+    @MainActor
+    static func settledAuthorization() async -> Int {
+        let start = Date()
+        while AuthorizationCenter.shared.authorizationStatus == .notDetermined,
+              Date().timeIntervalSince(start) < 5 {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return Int(Date().timeIntervalSince(start) * 1000)
+    }
+
     static func emit(_ object: [String: Any]) {
         var line = object
         line["at"] = ISO8601DateFormatter().string(from: Date())
@@ -135,14 +150,22 @@ struct FilterProbeApp: App {
         let args = Array(CommandLine.arguments.dropFirst())
         guard let verb = args.first, verb == "apply" || verb == "status" else { return }
         let names = (try? Manifest.bundled().stores) ?? []
-        do {
-            var result: [String: Any] = verb == "apply" ? try Probe.apply(args.dropFirst().first ?? "") : [:]
-            result["readback"] = Probe.readback(names)
-            Probe.emit(result)
-            exit(0)
-        } catch {
-            Probe.emit(["error": "\(error)", "readback": Probe.readback(names)])
-            exit(1)
+        let id = args.dropFirst().first ?? ""
+        Task { @MainActor in
+            let settledMs = await Probe.settledAuthorization()
+            do {
+                guard Probe.authorization() == "approved" || verb == "status" else {
+                    throw ProbeError.notAuthorized(Probe.authorization())
+                }
+                var result: [String: Any] = verb == "apply" ? try Probe.apply(id) : [:]
+                result["readback"] = Probe.readback(names)
+                result["authorizationSettledMs"] = settledMs
+                Probe.emit(result)
+                exit(0)
+            } catch {
+                Probe.emit(["error": "\(error)", "readback": Probe.readback(names), "authorizationSettledMs": settledMs])
+                exit(1)
+            }
         }
     }
 

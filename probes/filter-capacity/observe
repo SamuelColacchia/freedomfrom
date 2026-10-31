@@ -91,9 +91,11 @@ address_matches() {
 
 observe_host() {
   local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict="unobserved" detail="" addr=""
-  phone tap Address >/dev/null
-  phone type "https://$host/"$'\n' >/dev/null
   local started=$SECONDS
+  if ! { phone tap Address && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
+    detail="could not reach Safari's address field"
+    started=$(( SECONDS - SETTLE_SECS ))
+  fi
   while (( SECONDS - started < SETTLE_SECS )); do
     phone ui > "$ui" 2>/dev/null || true
     if grep -q -E "$BLOCKED_RE" "$ui"; then verdict=blocked; break; fi
@@ -105,8 +107,8 @@ observe_host() {
     detail="address showed '$addr'"
     verdict=unobserved
   fi
-  [[ "$verdict" == unobserved && -z "$detail" ]] && detail="nothing settled in ${SETTLE_SECS}s"
-  [[ "$verdict" == failed ]] && detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true)
+  if [[ "$verdict" == unobserved && -z "$detail" ]]; then detail="nothing settled in ${SETTLE_SECS}s"; fi
+  if [[ "$verdict" == failed ]]; then detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true); fi
   phone shot "$dir/$host.png" >/dev/null 2>&1 || detail="${detail:+$detail; }no screenshot"
   printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$verdict" "$addr" "$(( SECONDS - started ))" "$detail"
 }
@@ -122,6 +124,7 @@ cmd_sweep() {
     echo "device_row=$(phone which | tr '\t' ' ')"
   } > "$dir/meta.txt"
   local host n=0 total; total=$(hosts_for "$id" | wc -l)
+  phone launch com.apple.mobilesafari >/dev/null
   while IFS= read -r host; do
     n=$((n + 1))
     observe_host "$host" "$dir" | tee -a "$rows" | awk -v n="$n" -v t="$total" -F'\t' '{printf "  [%d/%d] %-28s %s %s\n", n, t, $1, $2, $5}'
