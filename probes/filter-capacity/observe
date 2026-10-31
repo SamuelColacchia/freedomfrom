@@ -28,9 +28,10 @@ OUT="$HERE/results/$RUN"
 SETTLE_SECS="${PROBE_SETTLE_SECS:-25}"
 
 # Safari's own page for a Screen Time block, and its own pages for a load that
-# failed. The block wording is checked against the first real block of a run
-# (README, "Calibration") before any count is trusted.
-BLOCKED_RE='because it is restricted|Restricted Site|This website is restricted|Website Restricted'
+# failed. The block wording is Safari's on iPadOS 27.0.1, read off the first real
+# block (single-25, bbc.co.uk): "Website Not Allowed", and "“host” is a
+# restricted website." Recheck it on any other OS (README, "Calibration").
+BLOCKED_RE='Website Not Allowed|is a restricted website'
 FAILED_RE="Safari (Can.t|Cannot) Open the Page|can.t be found|could not be found|not connected to the internet|network connection was lost|request timed out|Cannot Connect to Server"
 
 phone() { "$MACBRIDGE" phone "$@"; }
@@ -158,7 +159,7 @@ cmd_rescore() {
     done
   } > "$dir/rows.tsv.new"
   mv "$dir/rows.tsv.new" "$dir/rows.tsv"
-  diff <(cut -f1,2 "$dir/rows.orig.tsv") <(cut -f1,2 "$dir/rows.tsv") | grep -E '^[<>]' || echo "  no verdict changed"
+  { diff <(cut -f1,2 "$dir/rows.orig.tsv") <(cut -f1,2 "$dir/rows.tsv") || true; } | grep -E '^[<>]' || echo "  no verdict changed"
   cmd_summary_one "$dir/rows.tsv"
 }
 
