@@ -56,7 +56,9 @@ probes/filter-capacity/observe summary
 
 ### Calibration
 
-The block-page pattern (`BLOCKED_RE` in `observe`) is Safari's wording as expected, not yet as seen. Before any count is trusted, open the first `blocked` row's screenshot and UI tree and confirm the pattern matched the restriction page itself. Before trusting any `accessible`, confirm no blocked host was scored `accessible` in a scenario that should block it.
+The block-page pattern (`BLOCKED_RE` in `observe`) is the wording Safari showed on iPadOS 27.0.1 for the first real block (`single-25`, `bbc.co.uk`): **Website Not Allowed** and **"bbc.co.uk" is a restricted website.** The first guess at that wording matched neither, so block pages were scored `accessible`. That is how a wrong pattern fails, and why every row keeps its UI tree.
+
+On any other OS, open the first listed host's screenshot and tree before trusting a count. If the wording differs, fix `BLOCKED_RE` and run `observe rescore ID` on each affected sweep. Rescore re-reads the captured trees, keeps the originals as `rows.orig.tsv`, and never navigates. Never rescore a sweep that is still running, since it is still appending rows.
 
 ## Known confounds
 
