@@ -10,6 +10,7 @@
 #   observe scenario ID          apply, then sweep
 #   observe reboot               restart the device and wait for it to come back
 #   observe summary [RUN]        verdict counts per sweep
+#   observe report [RUN]         listed vs unlisted hosts against verdicts, per sweep
 #
 # Every row is a screenshot and a full UI tree under results/RUN/, plus one
 # line in rows.tsv. A row is only ever what the screen showed: a host that never
@@ -156,6 +157,46 @@ cmd_summary() {
   find "$run" -name rows.tsv | sort | while IFS= read -r f; do cmd_summary_one "$f"; done
 }
 
+# What each store held during each scenario, with 'keep' resolved to whatever
+# the store held in the scenario before it. One line per scenario:
+#   id <TAB> listed-hosts (space separated) <TAB> excepted-hosts
+listed_by_scenario() {
+  jq -r '
+    reduce .scenarios[] as $s ({state: {}, out: []};
+      .state as $prev
+      | .state = ($s.stores | with_entries(if .value == "keep" then .value = $prev[.key] else . end))
+      | .out += [[$s.id,
+          ([.state[] | select(. != null) | .domains // []] | add // [] | unique | join(" ")),
+          ([.state[] | select(. != null) | .except // []] | add // [] | unique | join(" "))]])
+    | .out[] | @tsv' "$MANIFEST"
+}
+
+# A host counts only if it was accessible at baseline: a page that never loaded
+# says nothing about filtering when it does not load later.
+cmd_report() {
+  local run="$HERE/results/${1:-$RUN}" base
+  base="$run/baseline/sweep/rows.tsv"
+  [[ -f "$base" ]] || die "no baseline sweep in $run"
+  printf 'scenario\tsweep\tlisted:blocked\tlisted:accessible\tlisted:other\tunlisted:blocked\tunlisted:accessible\tunlisted:other\texcluded\n'
+  local id listed except rows
+  while IFS=$'\t' read -r id listed except; do
+    for rows in "$run/$id"/*/rows.tsv; do
+      [[ -f "$rows" ]] || continue
+      awk -F'\t' -v listed=" $listed " -v id="$id" -v sweep="$(basename "$(dirname "$rows")")" '
+        FNR == NR { if (FNR > 1 && $2 == "accessible") ok[$1] = 1; next }
+        FNR == 1 { next }
+        !($1 in ok) { excluded++; next }
+        { side = index(listed, " " $1 " ") ? "listed" : "unlisted"
+          v = ($2 == "blocked" || $2 == "accessible") ? $2 : "other"
+          c[side ":" v]++ }
+        END { printf "%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", id, sweep,
+              c["listed:blocked"], c["listed:accessible"], c["listed:other"],
+              c["unlisted:blocked"], c["unlisted:accessible"], c["unlisted:other"], excluded }
+      ' "$base" "$rows"
+    done
+  done < <(listed_by_scenario)
+}
+
 case "${1:-}" in
   preflight) cmd_preflight ;;
   status)    cmd_status ;;
@@ -164,5 +205,6 @@ case "${1:-}" in
   scenario)  cmd_scenario "${2:?scenario}" ;;
   reboot)    cmd_reboot ;;
   summary)   cmd_summary "${2:-}" ;;
+  report)    cmd_report "${2:-}" ;;
   *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
