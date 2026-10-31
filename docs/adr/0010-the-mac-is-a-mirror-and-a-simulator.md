@@ -4,6 +4,8 @@ The WSL2 tree is the only source of truth. Every build rsyncs it destructively i
 
 Every command in this ADR was run against `ssh mac` before it was written down.
 
+> **Superseded in part by [ADR 0011](./0011-unattended-device-signing-through-macbridge.md).** Device builds no longer need a person: they sign through a dedicated keychain and the App Store Connect key, and the phone is reached over Wi-Fi. The simulator loop below stands unchanged.
+
 ## The loop
 
 `scripts/mac` is one dispatcher on the WSL2 side. **There is no `sync` verb**: the rsync is inside every verb, so nothing can run against a stale mirror.

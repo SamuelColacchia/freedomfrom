@@ -85,7 +85,7 @@ Decided by [ADR 0010](./adr/0010-the-mac-is-a-mirror-and-a-simulator.md); the co
 - **The daily loop is the iOS Simulator**, which ad-hoc signs — so no identity, no keychain, and no person. `scripts/mac build` is 1.7s warm on a one-file probe; three targets and a package will be slower cold, and warm incremental is the number that matters.
 - **`scripts/mac test`** runs `swift test` on `FreedomFromKit` on the Mac, against Darwin Foundation. Not on Linux: the kit's subject matter is calendar arithmetic, which is exactly where the two Foundations diverge.
 - **`scripts/mac run [secs]`** builds, launches on the simulator, and prints the app's own `os_log` lines by predicate. This is how the logging contract in §10 is verified before any device is cabled.
-- **`scripts/mac device`** signs and installs on the phone, and needs a human: the phone must be cabled, and the login keychain must be unlocked inside a shared SSH `ControlMaster` session. It probes both in under a second and **prints** the unlock lines for a human to run in their own shell. Do not run them; do not ask for the password.
+- **`scripts/mac device`** archives, signs and installs on the phone with nobody present, through macbridge's unattended signing keychain and App Store Connect key (ADR 0011). It probes the phone and signing in seconds before the archive.
 - **Never run `xcodebuild`, `xcodegen`, `swift test`, or `simctl` by hand.**
 - **No CI.** Not an oversight; see the ADR.
 

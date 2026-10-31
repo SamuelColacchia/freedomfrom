@@ -202,7 +202,7 @@ TOTAL_STAGES=8
 HOST="${FREEDOMFROM_MAC_HOST:-mac}"
 MAC_ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"
 DEVICE="${FREEDOMFROM_DEVICE:-7EE3550E-8A48-5192-B729-961CB3FD51E9}"
-SIGN_SOCKET="${FREEDOMFROM_SIGN_SOCKET:-$HOME/.ssh/cm/mac-sign}"
+MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"   # signs and installs, unattended
 
 # The phone answers to two identifiers and they are not interchangeable.
 # `devicectl --device` takes the CoreDevice UUID above; `log collect
@@ -375,25 +375,21 @@ else
   exit 1
 fi
 
-if [[ -S "$SIGN_SOCKET" ]]; then
-  printf '  %s✓%s a signing socket exists at %s\n' "$GREEN" "$RESET" "$SIGN_SOCKET"
+if MAC_HOST="$HOST" "$MACBRIDGE" signing status >/dev/null 2>&1; then
+  printf '  %s✓%s unattended signing works on %s (macbridge)\n' "$GREEN" "$RESET" "$HOST"
 else
-  warn "no signing socket, so the build cannot be signed or installed."
-  say "A person at their own shell runs these; the password never enters this session:"
-  note "  mkdir -p $(dirname "$SIGN_SOCKET")"
-  note "  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST"
-  note "  read -rs pw && printf '%s\\n' \"\$pw\" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\"
-  note "    'read -r p; security unlock-keychain -p \"\$p\" ~/Library/Keychains/login.keychain-db'"
-  pause "Run those in another shell, then press Enter."
+  warn "unattended signing on $HOST is not working, so the build cannot be signed or installed."
+  note "  mac signing status    # says why; mac signing setup repairs it"
+  exit 1
 fi
 
-if remote_sh <<EOF | grep -q "$DEVICE"
-xcrun devicectl list devices 2>/dev/null
-EOF
-then
-  printf '  %s✓%s the phone (%s) is connected\n' "$GREEN" "$RESET" "$DEVICE"
+# macbridge matches FREEDOMFROM_DEVICE against the CoreDevice UUID, the UDID or
+# the name, and wakes an idle Wi-Fi phone; paired-but-gone fails here, not later.
+if device_row=$(MAC_HOST="$HOST" MAC_DEVICE="$DEVICE" "$MACBRIDGE" phone which 2>/dev/null); then
+  printf '  %s✓%s the phone (%s) is connected\n' "$GREEN" "$RESET" "$(cut -f2 <<<"$device_row")"
+  [[ -n "$DEVICE_UDID" ]] || DEVICE_UDID=$(cut -f1 <<<"$device_row")
 else
-  warn "the phone is not visible to the Mac. Cable it, unlock it, and re-run."
+  warn "the phone ($DEVICE) is not reachable. Wake it, unlock it, keep it on the Mac's network or cable it, and re-run."
   exit 1
 fi
 
