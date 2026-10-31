@@ -11,6 +11,7 @@
 #   observe reboot               restart the device and wait for it to come back
 #   observe summary [RUN]        verdict counts per sweep
 #   observe report [RUN]         listed vs unlisted hosts against verdicts, per sweep
+#   observe rescore ID [LABEL]   re-derive a sweep's verdicts from its captured UI trees
 #
 # Every row is a screenshot and a full UI tree under results/RUN/, plus one
 # line in rows.tsv. A row is only ever what the screen showed: a host that never
@@ -81,28 +82,35 @@ address_of() {
 # A row counts only if Safari ended up somewhere this host can lead: itself,
 # its www form or apex, a subdomain of it, or the redirect target recorded when
 # the list was made. Another domain altogether is never this host's row.
+#
+# Safari cuts a long address short with "..." in what it exposes, so a cut
+# address matches when it is the start of one of those exact names.
 address_matches() {
-  local host=$1 addr=$2 redirect
+  local host=$1 addr=$2 redirect cut c
   redirect=$(jq -r --arg h "$host" '.redirects[$h] // "" | sub("^https?://"; "") | sub("/.*$"; "")' "$MANIFEST")
   case "$addr" in
+    *...|*$'\xe2\x80\xa6')
+      cut=${addr%...}; cut=${cut%$'\xe2\x80\xa6'}
+      (( ${#cut} >= 8 )) || return 1
+      for c in "$host" "www.$host" "${host#www.}" "$redirect" "${redirect#www.}"; do
+        [[ -n "$c" && "$c" == "$cut"* ]] && return 0
+      done
+      return 1 ;;
     "$host"|"www.$host"|"${host#www.}"|*".${host#www.}") return 0 ;;
   esac
   [[ -n "$redirect" && ( "$addr" == "$redirect" || "$addr" == "${redirect#www.}" ) ]]
 }
 
-observe_host() {
-  local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict="unobserved" detail="" addr=""
-  local started=$SECONDS
-  if ! { phone tap Address && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
-    detail="could not reach Safari's address field"
-    started=$(( SECONDS - SETTLE_SECS ))
+# The verdict one captured UI tree supports, as verdict, address and detail
+# joined by the unit separator: a tab is whitespace to read, which would fold an
+# empty address away and shift the detail into its place.
+# Checked in this order, so a block page is never read as a load.
+score_ui() {
+  local host=$1 ui=$2 verdict=unobserved detail="" addr
+  if grep -q -E "$BLOCKED_RE" "$ui"; then verdict=blocked
+  elif grep -q -E "$FAILED_RE" "$ui"; then verdict=failed
+  elif grep -q "IsPageLoaded=true" "$ui"; then verdict=accessible
   fi
-  while (( SECONDS - started < SETTLE_SECS )); do
-    phone ui > "$ui" 2>/dev/null || true
-    if grep -q -E "$BLOCKED_RE" "$ui"; then verdict=blocked; break; fi
-    if grep -q -E "$FAILED_RE" "$ui"; then verdict=failed; break; fi
-    if grep -q "IsPageLoaded=true" "$ui"; then verdict=accessible; break; fi
-  done
   addr=$(address_of "$ui")
   if [[ "$verdict" != unobserved ]] && ! address_matches "$host" "$addr"; then
     detail="address showed '$addr'"
@@ -110,8 +118,48 @@ observe_host() {
   fi
   if [[ "$verdict" == unobserved && -z "$detail" ]]; then detail="nothing settled in ${SETTLE_SECS}s"; fi
   if [[ "$verdict" == failed ]]; then detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true); fi
+  printf '%s\x1f%s\x1f%s\n' "$verdict" "$addr" "$detail"
+}
+
+observe_host() {
+  local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict addr detail
+  local started=$SECONDS
+  : > "$ui"
+  if { phone tap Address && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
+    while (( SECONDS - started < SETTLE_SECS )); do
+      phone ui > "$ui" 2>/dev/null || true
+      grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui" && break
+    done
+    IFS=$'\x1f' read -r verdict addr detail < <(score_ui "$host" "$ui")
+  else
+    verdict=unobserved addr="" detail="could not reach Safari's address field"
+  fi
   phone shot "$dir/$host.png" >/dev/null 2>&1 || detail="${detail:+$detail; }no screenshot"
   printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$verdict" "$addr" "$(( SECONDS - started ))" "$detail"
+}
+
+# Re-derive every row of a sweep from the UI trees it captured, after a fix to
+# how a tree is read. Nothing is navigated or assumed: a row that never reached
+# the address field stays as it was. The first rescore keeps rows.orig.tsv.
+cmd_rescore() {
+  local dir="$OUT/$1/${2:-sweep}" line host secs detail nv na nd
+  [[ -f "$dir/rows.tsv" ]] || die "no sweep at $dir"
+  [[ -f "$dir/rows.orig.tsv" ]] || cp "$dir/rows.tsv" "$dir/rows.orig.tsv"
+  {
+    head -n1 "$dir/rows.orig.tsv"
+    tail -n +2 "$dir/rows.orig.tsv" | while IFS= read -r line; do
+      host=$(cut -f1 <<<"$line"); secs=$(cut -f4 <<<"$line"); detail=$(cut -f5 <<<"$line")
+      if [[ "$detail" == "could not reach"* || ! -s "$dir/$host.ui.txt" ]]; then
+        printf '%s\n' "$line"
+      else
+        IFS=$'\x1f' read -r nv na nd < <(score_ui "$host" "$dir/$host.ui.txt")
+        printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$nv" "$na" "$secs" "$nd"
+      fi
+    done
+  } > "$dir/rows.tsv.new"
+  mv "$dir/rows.tsv.new" "$dir/rows.tsv"
+  diff <(cut -f1,2 "$dir/rows.orig.tsv") <(cut -f1,2 "$dir/rows.tsv") | grep -E '^[<>]' || echo "  no verdict changed"
+  cmd_summary_one "$dir/rows.tsv"
 }
 
 cmd_sweep() {
@@ -197,6 +245,10 @@ cmd_report() {
   done < <(listed_by_scenario)
 }
 
+# Everything runs inside main, called from the last line, so bash has parsed
+# the whole file before a sweep starts. A sweep takes half an hour, and bash
+# reads a plain script as it goes: editing it mid-run used to be read mid-run.
+main() {
 case "${1:-}" in
   preflight) cmd_preflight ;;
   status)    cmd_status ;;
@@ -206,5 +258,9 @@ case "${1:-}" in
   reboot)    cmd_reboot ;;
   summary)   cmd_summary "${2:-}" ;;
   report)    cmd_report "${2:-}" ;;
-  *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  rescore)   cmd_rescore "${2:?scenario}" "${3:-sweep}" ;;
+  *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
+}
+
+main "$@"; exit $?
