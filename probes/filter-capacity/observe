@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+#
+# Drive the #80 filter-capacity probe on a device through macbridge, and record
+# what Safari shows for every host a scenario names. See README.md beside this.
+#
+#   observe preflight            check the device, WebDriverAgent, Safari and the probe
+#   observe status               the probe's authorization and both stores, as JSON
+#   observe apply ID             write scenario ID to the probe's stores
+#   observe sweep ID [LABEL]     observe every host ID names, without applying
+#   observe scenario ID          apply, then sweep
+#   observe reboot               restart the device and wait for it to come back
+#   observe summary [RUN]        verdict counts per sweep
+#
+# Every row is a screenshot and a full UI tree under results/RUN/, plus one
+# line in rows.tsv. A row is only ever what the screen showed: a host that never
+# settled is "unobserved", never assumed.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST="$HERE/scenarios.json"
+BUNDLE=com.samuelcolacchia.freedomfrom.filterprobe
+MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"
+export MAC_DEVICE="${FREEDOMFROM_DEVICE:?set FREEDOMFROM_DEVICE to the device under test}"
+RUN="${PROBE_RUN:-$(date +%Y%m%d)}"
+OUT="$HERE/results/$RUN"
+SETTLE_SECS="${PROBE_SETTLE_SECS:-25}"
+
+# Safari's own page for a Screen Time block, and its own pages for a load that
+# failed. The block wording is checked against the first real block of a run
+# (README, "Calibration") before any count is trusted.
+BLOCKED_RE='because it is restricted|Restricted Site|This website is restricted|Website Restricted'
+FAILED_RE="Safari (Can.t|Cannot) Open the Page|can.t be found|could not be found|not connected to the internet|network connection was lost|request timed out|Cannot Connect to Server"
+
+phone() { "$MACBRIDGE" phone "$@"; }
+die() { echo "observe: $*" >&2; exit 1; }
+
+manifest_hash() { sha256sum "$MANIFEST" | cut -c1-12; }
+
+hosts_for() {
+  jq -er --arg id "$1" '.scenarios[] | select(.id == $id) | .observe[]' "$MANIFEST" \
+    || die "no scenario named $1 in scenarios.json"
+}
+
+# The probe prints one JSON line and exits; devicectl's own chatter is dropped.
+probe() { phone run "$BUNDLE" "$@" 2>/dev/null | grep -E '^\{' | tail -n1; }
+
+cmd_status() { probe status; }
+
+cmd_preflight() {
+  phone which >/dev/null || die "device $MAC_DEVICE is not reachable"
+  phone wda-status >/dev/null 2>&1 || phone wda-start >/dev/null || die "WebDriverAgent will not start"
+  local st; st=$(probe status)
+  [[ -n "$st" ]] || die "the probe did not answer; install it with: scripts/mac probe"
+  jq -e '.authorization == "approved"' >/dev/null <<<"$st" \
+    || die "the probe is not authorized ($(jq -r .authorization <<<"$st")); open Filter Probe and tap Authorize Filter Probe"
+  phone launch com.apple.mobilesafari >/dev/null
+  local tabs; tabs=$(phone ui | grep -c "TabBarTab?" || true)
+  (( tabs == 0 )) || die "Safari has $tabs tabs open; close all but one so every row navigates the same tab"
+  echo "ready: $(jq -c '{authorization, readback: (.readback | map_values(.policy))}' <<<"$st") manifest $(manifest_hash)"
+}
+
+cmd_apply() {
+  local id=$1 dir="$OUT/$1"
+  mkdir -p "$dir"
+  local line; line=$(probe apply "$id")
+  [[ -n "$line" ]] || die "the probe printed nothing for apply $id"
+  printf '%s\n' "$line" > "$dir/apply.json"
+  jq -e '.error == null and .authorization == "approved"' >/dev/null <<<"$line" \
+    || die "apply $id failed: $line"
+  echo "applied $id: $(jq -c '.readback | map_values({policy, count, exceptCount})' <<<"$line")"
+}
+
+# The address field Safari shows for the active tab, without the bidi mark it
+# prefixes, lower-cased. Empty when no tab is showing a page.
+address_of() {
+  grep -m1 -E "identifier: 'TabBarItemTitleContainer', label: 'Address', value:" "$1" \
+    | sed -E "s/.*value: //; s/, (Selected|Focused).*//; s/^\xe2\x80\x8e//" | tr 'A-Z' 'a-z'
+}
+
+# A row counts only if Safari ended up somewhere this host can lead: itself,
+# its www form or apex, a subdomain of it, or the redirect target recorded when
+# the list was made. Another domain altogether is never this host's row.
+address_matches() {
+  local host=$1 addr=$2 redirect
+  redirect=$(jq -r --arg h "$host" '.redirects[$h] // "" | sub("^https?://"; "") | sub("/.*$"; "")' "$MANIFEST")
+  case "$addr" in
+    "$host"|"www.$host"|"${host#www.}"|*".${host#www.}") return 0 ;;
+  esac
+  [[ -n "$redirect" && ( "$addr" == "$redirect" || "$addr" == "${redirect#www.}" ) ]]
+}
+
+observe_host() {
+  local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict="unobserved" detail="" addr=""
+  phone tap Address >/dev/null
+  phone type "https://$host/"$'\n' >/dev/null
+  local started=$SECONDS
+  while (( SECONDS - started < SETTLE_SECS )); do
+    phone ui > "$ui" 2>/dev/null || true
+    if grep -q -E "$BLOCKED_RE" "$ui"; then verdict=blocked; break; fi
+    if grep -q -E "$FAILED_RE" "$ui"; then verdict=failed; break; fi
+    if grep -q "IsPageLoaded=true" "$ui"; then verdict=accessible; break; fi
+  done
+  addr=$(address_of "$ui")
+  if [[ "$verdict" != unobserved ]] && ! address_matches "$host" "$addr"; then
+    detail="address showed '$addr'"
+    verdict=unobserved
+  fi
+  [[ "$verdict" == unobserved && -z "$detail" ]] && detail="nothing settled in ${SETTLE_SECS}s"
+  [[ "$verdict" == failed ]] && detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true)
+  phone shot "$dir/$host.png" >/dev/null 2>&1 || detail="${detail:+$detail; }no screenshot"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$verdict" "$addr" "$(( SECONDS - started ))" "$detail"
+}
+
+cmd_sweep() {
+  local id=$1 label=${2:-sweep} dir="$OUT/$1/${2:-sweep}"
+  mkdir -p "$dir"
+  local rows="$dir/rows.tsv"
+  printf 'host\tverdict\taddress\tsecs\tdetail\n' > "$rows"
+  {
+    echo "scenario=$id label=$label manifest=$(manifest_hash) device=$MAC_DEVICE"
+    echo "started=$(date -u +%FT%TZ)"
+    echo "device_row=$(phone which | tr '\t' ' ')"
+  } > "$dir/meta.txt"
+  local host n=0 total; total=$(hosts_for "$id" | wc -l)
+  while IFS= read -r host; do
+    n=$((n + 1))
+    observe_host "$host" "$dir" | tee -a "$rows" | awk -v n="$n" -v t="$total" -F'\t' '{printf "  [%d/%d] %-28s %s %s\n", n, t, $1, $2, $5}'
+  done < <(hosts_for "$id")
+  echo "finished=$(date -u +%FT%TZ)" >> "$dir/meta.txt"
+  echo "status=$(probe status)" >> "$dir/meta.txt"
+  cmd_summary_one "$rows"
+}
+
+cmd_scenario() { cmd_apply "$1"; cmd_sweep "$1" sweep; }
+
+cmd_reboot() {
+  phone reboot
+  local started=$SECONDS
+  sleep 20
+  until phone which >/dev/null 2>&1; do
+    (( SECONDS - started < 600 )) || die "the device did not come back within 10 minutes"
+    sleep 10
+  done
+  echo "back after $(( SECONDS - started ))s; unlock it if it asks, then: observe preflight"
+}
+
+cmd_summary_one() {
+  awk -F'\t' 'NR > 1 { c[$2]++; n++ } END { printf "  %s:", FILENAME; for (v in c) printf " %s=%d", v, c[v]; printf " total=%d\n", n }' "$1"
+}
+
+cmd_summary() {
+  local run="$HERE/results/${1:-$RUN}"
+  find "$run" -name rows.tsv | sort | while IFS= read -r f; do cmd_summary_one "$f"; done
+}
+
+case "${1:-}" in
+  preflight) cmd_preflight ;;
+  status)    cmd_status ;;
+  apply)     cmd_apply "${2:?scenario}" ;;
+  sweep)     cmd_sweep "${2:?scenario}" "${3:-sweep}" ;;
+  scenario)  cmd_scenario "${2:?scenario}" ;;
+  reboot)    cmd_reboot ;;
+  summary)   cmd_summary "${2:-}" ;;
+  *) sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

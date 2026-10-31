@@ -11,5 +11,8 @@
 DerivedData/
 *.xcarchive
 
+# Raw per-run output of the #80 filter-capacity probe: screenshots and UI trees
+probes/filter-capacity/results/
+
 # Dropped here by wrangler every time a pr-walkthrough is published
 .wrangler/

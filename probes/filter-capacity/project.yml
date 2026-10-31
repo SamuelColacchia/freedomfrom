@@ -1,0 +1,48 @@
+# The filter-capacity probe for issue #80. A separate project on purpose: it
+# shares no target, package, App Group or store name with FreedomFrom, so
+# nothing here can touch a real commitment. Built through
+# `scripts/mac probe`, which hands this directory to macbridge as its own
+# mirror (~/builds/filter-capacity on the Mac).
+
+name: FilterProbe
+
+options:
+  deploymentTarget:
+    iOS: "26.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 6989TSP54U
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  FilterProbe:
+    type: application
+    platform: iOS
+    sources:
+      - path: FilterProbe
+        excludes: ["*.entitlements"]
+      # Bundled so the app and the harness read the same scenarios.
+      - path: scenarios.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom.filterprobe
+        PRODUCT_NAME: FilterProbe
+        CODE_SIGN_ENTITLEMENTS: FilterProbe/FilterProbe.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Filter Probe
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+
+schemes:
+  FilterProbe:
+    build:
+      targets:
+        FilterProbe: all
+    archive:
+      config: Release
