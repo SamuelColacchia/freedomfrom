@@ -11,7 +11,7 @@ HOST="${FREEDOMFROM_MAC_HOST:-mac}"
 ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"   # relative to the Mac's $HOME
 SIM="${FREEDOMFROM_SIM:-iPhone 17 Pro}"
 DEVICE="${FREEDOMFROM_DEVICE:-}"
-SIGN_SOCKET="${FREEDOMFROM_SIGN_SOCKET:-$HOME/.ssh/cm/mac-sign}"
+MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"   # ~/projects/macbridge; signs and installs on the phone
 
 SCHEME=FreedomFrom
 BUNDLE=com.samuelcolacchia.freedomfrom
@@ -49,88 +49,6 @@ EOF
 
 # Run a script on the Mac. The script arrives on stdin, so nothing is quoted twice.
 remote() { ssh -o BatchMode=yes "$HOST" bash -s; }
-
-# The device to install on, chosen rather than assumed.
-#
-# A UDID used to be hardcoded here as the default, which is how a session aimed
-# at one device installed on another: the export was in the instructions and
-# not in the shell, and nothing said which phone had been picked.
-#
-# An explicit FREEDOMFROM_DEVICE still wins outright and is never second-
-# guessed — the wizards set it, and anything scripted needs it. With nothing
-# set, this asks; with one device connected it takes it and says so; with none
-# it says that, rather than reaching for a UDID that may not be plugged in.
-#
-# Only connected devices are offered. `devicectl` lists a device long after it
-# was last cabled, as "available (paired)", and nothing can be installed to one
-# of those.
-resolve_device() {
-  [[ -n "$DEVICE" ]] && return 0
-
-  local listing rows=() row
-  listing=$(remote <<'LIST' 2>/dev/null || true
-xcrun devicectl list devices 2>/dev/null
-LIST
-  )
-  while IFS= read -r row; do
-    [[ -n "$row" ]] && rows+=("$row")
-  done < <(grep -E '\bconnected\b' <<<"$listing" | sed -E 's/[[:space:]]{2,}/\t/g')
-
-  if (( ${#rows[@]} == 0 )); then
-    cat >&2 <<EOF
-No device is connected to $HOST.
-
-Paired is not reachable: devicectl lists devices long after they were
-unplugged. Cable one, unlock it, and re-run — or name one outright:
-
-  export FREEDOMFROM_DEVICE=<identifier>
-EOF
-    return 4
-  fi
-
-  if (( ${#rows[@]} == 1 )); then
-    DEVICE=$(cut -f3 <<<"${rows[0]}")
-    printf '  using %s (%s)\n' \
-      "$(cut -f1 <<<"${rows[0]}")" "$(cut -f5 <<<"${rows[0]}")" >&2
-    return 0
-  fi
-
-  # More than one, so it is asked. Installing on the wrong phone is how a run
-  # gets walked against something nobody was watching, and it costs the run.
-  if [[ ! -t 0 ]]; then
-    {
-      printf 'More than one device is connected, and there is no terminal to ask at:\n\n'
-      for row in "${rows[@]}"; do
-        printf '  %s  %s\n' "$(cut -f3 <<<"$row")" "$(cut -f1 <<<"$row")"
-      done
-      printf '\nName one:  export FREEDOMFROM_DEVICE=<identifier>\n'
-    } >&2
-    return 4
-  fi
-
-  printf '\n  Which device?\n\n' >&2
-  local i=1
-  for row in "${rows[@]}"; do
-    printf '    %d) %-24s %s\n' "$i" "$(cut -f1 <<<"$row")" "$(cut -f5 <<<"$row")" >&2
-    i=$(( i + 1 ))
-  done
-  printf '\n' >&2
-
-  local choice
-  while :; do
-    printf '  1-%d: ' "${#rows[@]}" >&2
-    read -r choice || return 4
-    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#rows[@]} )); then
-      DEVICE=$(cut -f3 <<<"${rows[choice - 1]}")
-      printf '  using %s\n' "$(cut -f1 <<<"${rows[choice - 1]}")" >&2
-      return 0
-    fi
-    printf '  Not one of those.\n' >&2
-  done
-}
-
-# Run a script on the Mac through the socket a human unlocked for signing.
-remote_signing() { ssh -o ControlPath="$SIGN_SOCKET" "$HOST" bash -s; }
 
 sync_tree() {
   rsync -az --delete \
@@ -236,132 +154,40 @@ echo "cleaned \$R/derived and the generated project"
 EOF
 }
 
-# The one line that unlocks the login keychain through a socket that already
-# exists. Printed, never run: the password must not enter this session (issue
-# #13). It is the same line whether the socket was made a second ago or has
-# been up for hours, which is why both callers below print this rather than
-# each spelling it out and drifting.
-unlock_line() {
-  cat >&2 <<EOF
-  read -rs pw && printf '%s\\n' "\$pw" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\
-    'read -r p; security unlock-keychain -p "\$p" ~/Library/Keychains/login.keychain-db'
-EOF
-}
-
-# A device build needs two things no agent can do for itself: a keychain
-# unlocked by a person inside this very SSH session (issue #13), and a cabled
-# phone. Both are probed in under a second, ahead of an archive that is minutes.
+# Signing and installing go through macbridge (~/projects/macbridge): a
+# dedicated keychain on the Mac plus the App Store Connect key, so a device
+# build signs, provisions and installs with nobody at the Mac. This replaces
+# issue #13's human-unlocked socket; see docs/adr/0011.
 #
-# Three ways the signing half goes wrong and they want different fixes, so they
-# are told apart rather than collapsed into one message. Only one of them is
-# solved by deleting the socket, and saying so when it is not costs a person
-# the unlock they had already done.
+# The phone is chosen by macbridge, which matches FREEDOMFROM_DEVICE against
+# the CoreDevice UUID, the hardware UDID or the name (Xcode 26 printed the
+# first, Xcode 27 the second), and wakes an idle Wi-Fi phone rather than
+# calling it absent. Unset, it takes the one phone there is.
 cmd_device() {
   announce_hardware_pass
-  resolve_device || return $?
-  if [[ ! -S "$SIGN_SOCKET" ]]; then
-    cat >&2 <<EOF
-No signing socket at $SIGN_SOCKET
+  if ! command -v "$MACBRIDGE" >/dev/null 2>&1; then
+    echo "scripts/mac device needs macbridge's 'mac' on PATH (~/projects/macbridge, bin/mac)." >&2
+    return 3
+  fi
+  local row
+  row=$(MAC_HOST="$HOST" MAC_DEVICE="$DEVICE" "$MACBRIDGE" phone which) || return 4
+  printf '  using %s (%s, iOS %s)\n' "$(cut -f2 <<<"$row")" "$(cut -f1 <<<"$row")" "$(cut -f3 <<<"$row")" >&2
 
-A person at their own shell runs these. The password never enters this session:
-
-  mkdir -p $(dirname "$SIGN_SOCKET")
-  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST
-EOF
-    unlock_line
+  # Seconds, against an archive that is a minute: say now if signing is broken.
+  if ! MAC_HOST="$HOST" "$MACBRIDGE" signing status >/dev/null; then
+    echo "Unattended signing on $HOST is not working; 'mac signing status' says why." >&2
     return 3
   fi
 
-  # A socket file outlives the master that made it — ControlPersist expires, the
-  # laptop sleeps, the master is killed — and what is left looks identical to a
-  # working one from here. This is the only case where removing the file is the
-  # right advice, so it is the only case that gives it.
-  if ! ssh -O check -o ControlPath="$SIGN_SOCKET" "$HOST" >/dev/null 2>&1; then
-    cat >&2 <<EOF
-Stale signing socket at $SIGN_SOCKET
-
-The file is there but no master session is behind it, so nothing can be run
-through it. A person at their own shell runs these:
-
-  rm -f $SIGN_SOCKET
-  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST
-EOF
-    unlock_line
-    return 3
-  fi
-
-  # Capture what codesign says rather than discarding it. The usual cause is a
-  # locked keychain, but "usual" is not "always" — an expired certificate and a
-  # missing identity fail here too, and a script that has the real error and
-  # prints its own guess instead sends people to unlock something that was
-  # never locked.
-  local probe rc=0
-  probe=$(remote_signing 2>&1 <<'PROBE'
-d=$(mktemp -d) && cp /bin/echo "$d/probe" &&
-  codesign --force --sign "Apple Development" "$d/probe"
-rc=$?; rm -rf "$d"; exit $rc
-PROBE
-  ) || rc=$?
-
-  if (( rc != 0 )); then
-    cat >&2 <<EOF
-The socket at $SIGN_SOCKET is live, but signing through it fails.
-
-Almost always the login keychain is still locked. The unlock has to happen
-inside this socket's session, so run this in your own shell and then re-run
-'scripts/mac device'. The socket stays up; nothing here is torn down:
-
-EOF
-    unlock_line
-    cat >&2 <<EOF
-
-What codesign actually said, in case it is not the keychain:
-
-$(sed 's/^/  /' <<<"${probe:-(no output)}")
-EOF
-    return 3
-  fi
-
-  # `device info details` answers for a device that was cabled once and is not
-  # cabled now: it stays paired, and the call succeeds against stale pairing
-  # records. So this asks the list for the state column instead, which is the
-  # only thing that distinguishes reachable from remembered.
-  local device_row
-  device_row=$(remote_signing <<EOF 2>/dev/null | grep "$DEVICE" || true
-xcrun devicectl list devices 2>/dev/null
-EOF
-  )
-  if [[ -z "$device_row" ]]; then
-    echo "Device $DEVICE is not visible to the Mac at all. Someone has to cable it: issue #13 fixed that devices are plugged in only when installing." >&2
-    return 4
-  fi
-  if ! grep -qw connected <<<"$device_row"; then
-    cat >&2 <<EOF
-Device $DEVICE is known to the Mac but not connected.
-
-  $(sed 's/  */ /g' <<<"$device_row")
-
-Paired is not reachable. Cable it, unlock it, and re-run.
-EOF
-    return 4
-  fi
-
-  sync_tree
-  remote_signing <<EOF
-set -euo pipefail
-export PATH="\$HOME/.local/bin:\$PATH"
-R="\$HOME/$ROOT"; mkdir -p "\$R/derived" "\$R/logs"
-cd "\$R/src"
-xcodegen generate --quiet
-set -o pipefail
-xcodebuild -project $SCHEME.xcodeproj -scheme $SCHEME \\
-  -destination 'generic/platform=iOS' \\
-  -archivePath "\$R/derived/$SCHEME.xcarchive" \\
-  -allowProvisioningUpdates $PASS archive 2>&1 \\
-  | tee "\$R/logs/device.log" | xcbeautify --quiet --disable-logging
-xcrun devicectl device install app --device $DEVICE \\
-  "\$R/derived/$SCHEME.xcarchive/Products/Applications/$SCHEME.app"
-EOF
+  local pass=()
+  [[ -n "$PASS" ]] && pass=("$PASS")
+  MAC_HOST="$HOST" "$MACBRIDGE" xcb -C "$REPO" --sign -- \
+    -project "$SCHEME.xcodeproj" -scheme "$SCHEME" \
+    -destination 'generic/platform=iOS' \
+    -archivePath "../derived/$SCHEME.xcarchive" \
+    ${pass[@]+"${pass[@]}"} archive
+  MAC_HOST="$HOST" MAC_DEVICE="$(cut -f1 <<<"$row")" "$MACBRIDGE" phone install \
+    "$(basename "$REPO")/derived/$SCHEME.xcarchive/Products/Applications/$SCHEME.app"
 }
 
 cmd_help() {
@@ -375,15 +201,15 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
   shot [file]      capture what the simulator is showing right now.
   log [mins]       re-read those log lines without rebuilding.
   rawlog [lines]   tail the unfiltered xcodebuild log.
-  device           sign and install on a connected device. Asks which, when there is a
-                   choice. Needs a cable and a human-unlocked socket.
+  device           archive, sign and install on the phone, unattended, through
+                   macbridge. FREEDOMFROM_DEVICE picks when several are paired.
   clean            drop the derived-data cache and the generated project.
 
 Set FREEDOMFROM_HARDWARE_PASS=1 to compile in a release control for the
 hardware pass. The product has none; no build without this variable can.
 
 Overridable: FREEDOMFROM_MAC_HOST FREEDOMFROM_MAC_ROOT FREEDOMFROM_SIM
-             FREEDOMFROM_DEVICE (skips the picker) FREEDOMFROM_SIGN_SOCKET
+             FREEDOMFROM_DEVICE FREEDOMFROM_MACBRIDGE
 EOF
 }
 

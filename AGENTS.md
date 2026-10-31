@@ -5,7 +5,7 @@ iOS app for restricting access to apps and websites — filtering and blocking.
 ## Build host
 
 iOS/macOS work happens on a remote Mac reachable at `ssh mac` (macOS 26.6,
-Xcode 26.6, arm64). Xcode builds, simulators, signing, and `xcodebuild` runs go
+Xcode 27.0, arm64). Xcode builds, simulators, signing, and `xcodebuild` runs go
 there; this Linux box holds the repo and drives the agent skills.
 
 **Never run `xcodebuild`, `xcodegen`, `swift test`, or `simctl` by hand.** Use
@@ -19,7 +19,7 @@ scripts/mac run [secs]     # build, launch on the simulator, print the app's own
 scripts/mac shot [file]    # capture what the simulator is showing right now
 scripts/mac log [mins]     # re-read those log lines without rebuilding
 scripts/mac rawlog [lines] # tail the unfiltered xcodebuild log
-scripts/mac device         # sign and install on the phone. Needs a human.
+scripts/mac device         # archive, sign and install on the phone. Unattended.
 scripts/mac clean          # drop the derived-data cache and the generated project
 ```
 
@@ -41,11 +41,15 @@ recogniser that fails only under actual input — pass here and fail on the phon
 FB15711941 is one of those. A green `uitest` means the wiring is right, not that
 the gesture survives a hand.
 
-`scripts/mac device` is the one verb that needs a person: the phone has to be
-cabled, and the login keychain has to be unlocked inside a shared SSH session.
-It probes both in under a second and prints the exact unlock lines for a human
-to run in their own shell. Do not run those lines yourself and do not ask for
-the password — printing them is what keeps it out of the agent's session.
+`scripts/mac device` signs and installs through **macbridge**
+(`~/projects/macbridge`, its `mac` CLI on PATH): a dedicated signing keychain
+on the Mac plus the App Store Connect key, so nobody unlocks anything. It
+probes the phone and `mac signing status` in seconds before the archive, and
+exits 3 for signing, 4 for the phone. The phone is reached over Wi-Fi or a
+cable; `FREEDOMFROM_DEVICE` (CoreDevice UUID, UDID or name) picks one when
+several are paired. For screenshots, taps and the phone's UI tree, use
+`mac phone` (see macbridge's README). Why the socket went:
+`docs/adr/0011-unattended-device-signing-through-macbridge.md`.
 
 The full reasoning, and the measurements behind it, are in
 `docs/adr/0010-the-mac-is-a-mirror-and-a-simulator.md`.

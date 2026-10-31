@@ -219,7 +219,7 @@ TOTAL_STAGES=13
 HOST="${FREEDOMFROM_MAC_HOST:-mac}"
 MAC_ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"
 DEVICE="${FREEDOMFROM_DEVICE:-7EE3550E-8A48-5192-B729-961CB3FD51E9}"
-SIGN_SOCKET="${FREEDOMFROM_SIGN_SOCKET:-$HOME/.ssh/cm/mac-sign}"
+MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"   # signs and installs, unattended
 
 # `devicectl --device` takes the CoreDevice UUID above; `log collect
 # --device-udid` takes the ECID-derived hardware UDID. Resolved in preflight
@@ -574,50 +574,22 @@ else
   exit 1
 fi
 
-# A socket file outlives the master that made it, so its existence is not the
-# question. This asks the same thing `scripts/mac device` asks, and for the same
-# reason: the alternative is finding out at stage 2, with the phone already in
-# your hand and the install the thing that fails.
-if [[ -S "$SIGN_SOCKET" ]] && ssh -O check -o ControlPath="$SIGN_SOCKET" "$HOST" >/dev/null 2>&1; then
-  printf '  %s✓%s a live signing socket at %s\n' "$GREEN" "$RESET" "$SIGN_SOCKET"
+if MAC_HOST="$HOST" "$MACBRIDGE" signing status >/dev/null 2>&1; then
+  printf '  %s✓%s unattended signing works on %s (macbridge)\n' "$GREEN" "$RESET" "$HOST"
 else
-  if [[ -S "$SIGN_SOCKET" ]]; then
-    warn "the socket at $SIGN_SOCKET is stale: no master session is behind it."
-    say "A person at their own shell runs these; the password never enters this session:"
-    note "  rm -f $SIGN_SOCKET"
-  else
-    warn "no signing socket, so the build cannot be signed or installed."
-    say "A person at their own shell runs these; the password never enters this session:"
-    note "  mkdir -p $(dirname "$SIGN_SOCKET")"
-  fi
-  note "  ssh -o ControlMaster=yes -o ControlPath=$SIGN_SOCKET -o ControlPersist=8h -fN $HOST"
-  note "  read -rs pw && printf '%s\\n' \"\$pw\" | ssh -o ControlPath=$SIGN_SOCKET $HOST \\"
-  note "    'read -r p; security unlock-keychain -p \"\$p\" ~/Library/Keychains/login.keychain-db'"
-  pause "Run those in another shell, then press Enter."
+  warn "unattended signing on $HOST is not working, so the build cannot be signed or installed."
+  note "  mac signing status    # says why; mac signing setup repairs it"
+  exit 1
 fi
 
-# Listed is not reachable. A device stays in `devicectl list devices` long after
-# it was last plugged in, as "available (paired)", and `device info details`
-# answers for one of those too — so both of the obvious probes pass on a device
-# nothing can be installed to. The state column is the one that does not.
-device_row=$(
-  remote_sh <<EOF 2>/dev/null || true
-xcrun devicectl list devices 2>/dev/null | grep "$DEVICE"
-EOF
-)
-if [[ -z "$device_row" ]]; then
-  warn "device $DEVICE is not visible to the Mac at all."
-  note "Cable it, unlock it, trust the Mac if it asks, and re-run."
-  exit 1
-elif ! grep -qw connected <<<"$device_row"; then
-  warn "device $DEVICE is known to the Mac but not connected."
-  note "  $(sed 's/  */ /g' <<<"$device_row")"
-  say ""
-  note "Paired is not reachable: nothing can be installed to it and \`log collect\`"
-  note "has nothing to collect from. Cable it, unlock it, and re-run."
-  exit 1
+# macbridge matches FREEDOMFROM_DEVICE against the CoreDevice UUID, the UDID or
+# the name, and wakes an idle Wi-Fi phone; paired-but-gone fails here, not later.
+if device_row=$(MAC_HOST="$HOST" MAC_DEVICE="$DEVICE" "$MACBRIDGE" phone which 2>/dev/null); then
+  printf '  %s✓%s the device (%s) is connected\n' "$GREEN" "$RESET" "$(cut -f2 <<<"$device_row")"
+  [[ -n "$DEVICE_UDID" ]] || DEVICE_UDID=$(cut -f1 <<<"$device_row")
 else
-  printf '  %s✓%s the device (%s) is connected\n' "$GREEN" "$RESET" "$DEVICE"
+  warn "the device ($DEVICE) is not reachable. Wake it, unlock it, keep it on the Mac's network or cable it, and re-run."
+  exit 1
 fi
 
 # Asked once, read twice. The UDID is what `log collect` needs; the model and
