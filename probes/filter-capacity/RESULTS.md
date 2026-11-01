@@ -62,6 +62,10 @@ The device: iPad Pro 13-inch (M4), iPadOS 27.0.1, no passcode, individual Family
 - **App termination:** the probe exits straight after every write, and every sweep above ran with it terminated. Stores held in every sweep.
 - **Device restart:** `single-50` was applied and the iPad rebooted. After a person woke and unlocked it, with nothing reapplied (the probe only read its stores), all 48 counted listed hosts were still blocked and all 50 unlisted ones loaded, the same as before the reboot (`single-50/after-reboot`). Authorization also survived the restart.
 
+## Release
+
+`release` cleared both probe stores, and both read back `unset`. All 105 hosts that loaded at baseline loaded again. The 3 that did not (`bbc.co.uk`, `fitbit.com`, `blog.metalcloak.com`) redirect off-site and did not count at baseline either. Nothing the probe set is left on the iPad. Uninstalling Filter Probe would also remove its stores.
+
 ## What this changes for #79
 
 A launch catalogue cannot rely on several 50-domain stores. On this device, the whole app's web filtering is on only while the union of every store's domains stays at or under 50. Both 25 + 25 and 30 + 30 with 10 shared were enforced; 26 + 26 was not. 51 was not tested across two stores. Past that, every commitment's website blocking stops at once, while every store still reads back as set. An app cannot detect that from its own readback.

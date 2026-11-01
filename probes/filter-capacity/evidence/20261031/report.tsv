@@ -33,4 +33,4 @@ mc-www	sweep	1	0	0	0	1	0	1
 mc-except	sweep-stuck	1	0	0	0	0	1	1
 mc-except	sweep	1	0	0	1	0	0	1
 release	sweep-interrupted	0	0	0	0	0	0	1
-release	sweep	0	0	0	0	1	0	1
+release	sweep	0	0	0	0	105	0	6
