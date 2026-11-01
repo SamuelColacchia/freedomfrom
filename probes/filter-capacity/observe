@@ -121,7 +121,8 @@ score_ui() {
   elif grep -q -E "$FAILED_RE" "$ui"; then verdict=failed
   elif grep -q "IsPageLoaded=true" "$ui"; then verdict=accessible
   fi
-  addr=$(address_of "$ui")
+  # A tree with no address field is an empty address, not a reason to stop.
+  addr=$(address_of "$ui" || true)
   if [[ "$verdict" != unobserved ]] && ! address_matches "$host" "$addr"; then
     detail="address showed '$addr'"
     verdict=unobserved
@@ -132,7 +133,7 @@ score_ui() {
   # page naming any other host is (stuck sweeps before about:blank showed it).
   local named
   if [[ "$verdict" == blocked ]]; then
-    named=$(blocked_host "$ui")
+    named=$(blocked_host "$ui" || true)
     if [[ -z "$named" || ( "$named" != "$host" && "$host" != *".$named" ) ]]; then
       detail="block page names '$named'"
       verdict=unobserved
@@ -159,7 +160,9 @@ observe_host() {
        && phone tap Address && phone type "$clear" && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
     while (( SECONDS - started < SETTLE_SECS )); do
       phone ui > "$ui" 2>/dev/null || true
-      grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui" && break
+      # An if, not '&& break': as the loop's last command a failed grep made the
+      # loop return 1 when nothing settled, and set -e killed the whole sweep.
+      if grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui"; then break; fi
     done
     IFS=$'\x1f' read -r verdict addr detail < <(score_ui "$host" "$ui")
   else
