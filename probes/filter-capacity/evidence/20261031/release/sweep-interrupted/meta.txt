@@ -1,0 +1,3 @@
+scenario=release label=sweep manifest=e10fc0329a2d device=00008132-001C65641E85001C
+started=2026-11-01T06:24:38Z
+device_row=00008132-001C65641E85001C iPad (9) 27.0.1 localNetwork fdbe:4071:8ba0::1 connected 1F68B53A-7816-5C57-BA1B-39DA063BED60

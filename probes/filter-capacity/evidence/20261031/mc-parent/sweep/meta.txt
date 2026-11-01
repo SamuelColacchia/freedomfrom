@@ -1,0 +1,5 @@
+scenario=mc-parent label=sweep manifest=e10fc0329a2d device=00008132-001C65641E85001C
+started=2026-11-01T01:47:32Z
+device_row=00008132-001C65641E85001C iPad (9) 27.0.1 localNetwork fd1a:7ace:db7a::1 connected 1F68B53A-7816-5C57-BA1B-39DA063BED60
+finished=2026-11-01T01:48:13Z
+status={"at":"2026-11-01T01:48:14Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"count":1,"domains":["metalcloak.com"],"policy":"specific"},"filterProbeB":{"policy":"unset"}}}

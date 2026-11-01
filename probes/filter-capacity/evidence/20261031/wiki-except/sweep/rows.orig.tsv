@@ -1,0 +1,6 @@
+host	verdict	address	secs	detail
+wikipedia.org	blocked	wikipedia.org	12	
+www.wikipedia.org	unobserved	wikipedia.org	12	block page names 'wikipedia.org'
+en.wikipedia.org	blocked	en.wikipedia.org	13	
+de.wikipedia.org	blocked	de.wikipedia.org	12	
+fr.wikipedia.org	blocked	fr.wikipedia.org	13	

@@ -1,0 +1,5 @@
+scenario=baseline label=sweep manifest=86718fca1472 device=00008132-001C65641E85001C
+started=2026-10-31T22:21:11Z
+device_row=00008132-001C65641E85001C iPad (9) 27.0.1 localNetwork fd1a:7ace:db7a::1 connected 1F68B53A-7816-5C57-BA1B-39DA063BED60
+finished=2026-10-31T22:48:51Z
+status={"at":"2026-10-31T22:48:52Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"policy":"unset"},"filterProbeB":{"policy":"unset"}}}

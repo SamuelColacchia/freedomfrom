@@ -1,0 +1,1 @@
+{"at":"2026-11-01T01:44:50Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"count":1,"domains":["en.wikipedia.org"],"policy":"specific"},"filterProbeB":{"policy":"unset"}},"scenario":"wiki-sub","written":{"filterProbeA":"specific","filterProbeB":"none"}}

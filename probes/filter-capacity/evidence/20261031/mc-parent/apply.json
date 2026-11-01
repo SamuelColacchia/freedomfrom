@@ -1,0 +1,1 @@
+{"at":"2026-11-01T01:47:31Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"count":1,"domains":["metalcloak.com"],"policy":"specific"},"filterProbeB":{"policy":"unset"}},"scenario":"mc-parent","written":{"filterProbeA":"specific","filterProbeB":"none"}}
