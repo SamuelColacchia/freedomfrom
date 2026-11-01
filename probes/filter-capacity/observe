@@ -207,7 +207,9 @@ cmd_sweep() {
   phone launch com.apple.mobilesafari >/dev/null
   while IFS= read -r host; do
     n=$((n + 1))
-    observe_host "$host" "$dir" | tee -a "$rows" | awk -v n="$n" -v t="$total" -F'\t' '{printf "  [%d/%d] %-28s %s %s\n", n, t, $1, $2, $5}'
+    # stdin is the host list. A tap that fails makes macbridge rebuild its ssh
+    # tunnel, and ssh read the rest of the list: except-vs-block stopped at row 1.
+    observe_host "$host" "$dir" < /dev/null | tee -a "$rows" | awk -v n="$n" -v t="$total" -F'\t' '{printf "  [%d/%d] %-28s %s %s\n", n, t, $1, $2, $5}'
   done < <(hosts_for "$id")
   echo "finished=$(date -u +%FT%TZ)" >> "$dir/meta.txt"
   echo "status=$(probe status)" >> "$dir/meta.txt"
