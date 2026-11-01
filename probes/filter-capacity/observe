@@ -102,6 +102,15 @@ address_matches() {
   [[ -n "$redirect" && ( "$addr" == "$redirect" || "$addr" == "${redirect#www.}" ) ]]
 }
 
+# The host a block page names, from '"<host>" is a restricted website.', with
+# the curly quotes and the bidi isolates Safari wraps it in removed.
+blocked_host() {
+  grep -o -m1 -E "label: '[^']*is a restricted website" "$1" \
+    | sed -E "s/^label: '//; s/ is a restricted website$//" \
+    | sed -E $'s/\xe2\x80\x9c|\xe2\x80\x9d|\xe2\x81\xa6|\xe2\x81\xa9|\xe2\x80\xaa|\xe2\x80\xac//g' \
+    | tr 'A-Z' 'a-z'
+}
+
 # The verdict one captured UI tree supports, as verdict, address and detail
 # joined by the unit separator: a tab is whitespace to read, which would fold an
 # empty address away and shift the detail into its place.
@@ -117,6 +126,16 @@ score_ui() {
     detail="address showed '$addr'"
     verdict=unobserved
   fi
+  # A block page names the host it blocked. It must name this one: a page left
+  # over from the host before, or one naming only a parent, proves nothing here.
+  local named
+  if [[ "$verdict" == blocked ]]; then
+    named=$(blocked_host "$ui")
+    if [[ "$named" != "$host" ]]; then
+      detail="block page names '$named'"
+      verdict=unobserved
+    fi
+  fi
   if [[ "$verdict" == unobserved && -z "$detail" ]]; then detail="nothing settled in ${SETTLE_SECS}s"; fi
   if [[ "$verdict" == failed ]]; then detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true); fi
   printf '%s\x1f%s\x1f%s\n' "$verdict" "$addr" "$detail"
@@ -130,8 +149,12 @@ observe_host() {
   # appended to it (https://redis.io/https://docker.com/), so every row after a
   # block navigated nowhere. Deletes first empty the field whatever its state;
   # WebDriverAgent sends \b as the keyboard's delete key.
+  #
+  # about:blank goes in between, so the page the previous host left behind can
+  # never be the page this host is scored on.
   local clear; clear=$(printf '\b%.0s' {1..120})
-  if { phone tap Address && phone type "$clear" && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
+  if { phone tap Address && phone type "$clear" && phone type "about:blank"$'\n' \
+       && phone tap Address && phone type "$clear" && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
     while (( SECONDS - started < SETTLE_SECS )); do
       phone ui > "$ui" 2>/dev/null || true
       grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui" && break
