@@ -126,7 +126,12 @@ observe_host() {
   local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict addr detail
   local started=$SECONDS
   : > "$ui"
-  if { phone tap Address && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
+  # On a block page, tapping Address leaves the old URL unselected, and typing
+  # appended to it (https://redis.io/https://docker.com/), so every row after a
+  # block navigated nowhere. Deletes first empty the field whatever its state;
+  # WebDriverAgent sends \b as the keyboard's delete key.
+  local clear; clear=$(printf '\b%.0s' {1..120})
+  if { phone tap Address && phone type "$clear" && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
     while (( SECONDS - started < SETTLE_SECS )); do
       phone ui > "$ui" 2>/dev/null || true
       grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui" && break
