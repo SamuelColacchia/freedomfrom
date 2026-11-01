@@ -1,0 +1,16 @@
+host	verdict	address	secs	detail
+bbc.co.uk	blocked	bbc.co.uk	16	
+theguardian.com	blocked	theguardian.com	12	
+npr.org	blocked	npr.org	12	
+cnn.com	blocked	cnn.com	13	
+aljazeera.com	blocked	aljazeera.com	12	
+nature.com	blocked	nature.com	12	
+arstechnica.com	blocked	arstechnica.com	13	
+theverge.com	blocked	theverge.com	12	
+wired.com	blocked	wired.com	13	
+techcrunch.com	blocked	techcrunch.com	12	
+engadget.com	accessible	engadget.com	23	
+github.com	accessible	github.com	21	
+gitlab.com	accessible	about.gitlab.com	20	
+python.org	accessible	python.org	19	
+rust-lang.org	accessible	rust-lang.org	17	

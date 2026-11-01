@@ -14,7 +14,7 @@ The device: iPad Pro 13-inch (M4), iPadOS 27.0.1, no passcode, individual Family
 | `single-50` | A 50 | 50 | 46 / 48 | 0 | 0 / 50 |
 | `single-51` | A 51, read back 50 | 50 | 45 / 49 | 1 (`loc.gov`) | 0 / 49 |
 | `split-40` | A 20, B 20 | 40 | 38 / 38 | 0 | 0 / 39 |
-| `split-50` | A 25, B 25 | 50 | *pending re-run* | | |
+| `split-50` | A 25, B 25 | 50 | 48 / 48 | 0 | 0 / 50 |
 | `overlap` | A 30, B 30 | 50 | 48 / 48 | 0 | 0 / 4 |
 | `split-52` | A 26, B 26 | 52 | **0** / 50 | 47 | 0 / 48 |
 | `split-100` | A 50, B 50 | 100 | **0** / 96 | 92 | 0 / 2 |
@@ -34,7 +34,7 @@ The device: iPad Pro 13-inch (M4), iPadOS 27.0.1, no passcode, individual Family
 |---|---|---|
 | `auto-self-except` | `auto` adds domains 0–9 and excepts 0–4 | All 10 blocked. An exception does not remove a domain its own policy adds. |
 | `overlap` → `overlap-clear-b` | A 0–29, B 20–49; then B cleared, A untouched | Before: 0–49 blocked. After: 0–29 still blocked, including the 10 shared hosts; 30–49 load. Clearing a store releases only what no other store holds. |
-| `except-vs-block` | A excepts 20–29 the way a helper approval would; B blocks 20–39 | *pending re-run* |
+| `except-vs-block` | A excepts 20–29 the way a helper approval would; B blocks 20–39 | All of 20–39 blocked, including the 10 A excepts; the 10 hosts in neither store load. An exception in one store does not override a block in another: the most restrictive store wins. |
 
 ## Host matching
 
@@ -55,16 +55,16 @@ The device: iPad Pro 13-inch (M4), iPadOS 27.0.1, no passcode, individual Family
 - **A listed domain covers its subdomains; a listed subdomain covers only itself** (`wiki-parent`, `wiki-sub`).
 - **An exact-host exception does not carve a subdomain out of a parent the same policy adds** (`wiki-except`, `mc-except`). This is the same rule as `auto-self-except`.
 - When a parent is listed, Safari's block page for `www.wikipedia.org` names `wikipedia.org`, the listed rule, not the host typed.
-- `mc-www` is one unexplained sample: listing `www.metalcloak.com` blocked `blog.metalcloak.com` but not the apex. Both redirect to the apex, so this may be about redirects rather than matching. A second sample is *pending*.
+- **`mc-www` is inconclusive.** Listing `www.metalcloak.com` blocked `www.` and `blog.` in both samples, but the apex loaded in the first and was blocked in the second. Both subdomains redirect to the apex, so this is about redirects, not matching, and two samples disagree. Exact-host behaviour should be read from the Wikipedia rows, which do not redirect.
 
 ## Persistence
 
 - **App termination:** the probe exits straight after every write, and every sweep above ran with it terminated. Stores held in every sweep.
-- **Device restart:** *pending.* `single-50` was applied, the iPad rebooted, and nothing will be reapplied before the after-reboot sweep.
+- **Device restart:** `single-50` was applied and the iPad rebooted. After a person woke and unlocked it, with nothing reapplied (the probe only read its stores), all 48 counted listed hosts were still blocked and all 50 unlisted ones loaded, the same as before the reboot (`single-50/after-reboot`). Authorization also survived the restart.
 
 ## What this changes for #79
 
-A launch catalogue cannot rely on several 50-domain stores. On this device, the whole app's web filtering is on only while the union of every store's domains stays at or under 50 (50 enforced; 52 did not). Past that, every commitment's website blocking stops at once, while every store still reads back as set. An app cannot detect that from its own readback.
+A launch catalogue cannot rely on several 50-domain stores. On this device, the whole app's web filtering is on only while the union of every store's domains stays at or under 50. Both 25 + 25 and 30 + 30 with 10 shared were enforced; 26 + 26 was not. 51 was not tested across two stores. Past that, every commitment's website blocking stops at once, while every store still reads back as set. An app cannot detect that from its own readback.
 
 ## How it was observed, and what went wrong on the way
 
@@ -75,4 +75,6 @@ Four harness bugs surfaced during the run. Each was fixed, and every affected ro
 1. **Wrong block wording.** The guessed block-page wording matched nothing, so block pages scored `accessible`. It was calibrated against `single-25`'s first block, and the sweeps were rescored.
 2. **Truncated addresses.** Safari truncates long addresses (`nationalgeographi...`). Prefix matching was added and the baseline rescored.
 3. **A stuck address field.** On a block page, the address field kept the old URL and typing appended to it, so 10 sweeps reloaded the previous blocked host. Those sweeps are kept as `sweep-stuck` and were re-run.
-4. **Truncated sweeps.** A failed tap let ssh consume the host list, and a page that never settled tripped `set -e`, so three sweeps ended early. `split-40` lost only unlisted rows 82–103; `split-50` and `except-vs-block` are re-run.
+4. **Truncated sweeps.** A failed tap let ssh consume the host list, and a page that never settled tripped `set -e`, so three sweeps ended early. `split-40` lost only unlisted rows 82–103, after every listed host was recorded; `split-50` and `except-vs-block` were re-run in full.
+
+Every sweep, including the stuck and interrupted ones, is in `evidence/20261031/` with its readback and metadata. `report.tsv` is the full table, and `screenshots/` holds four downscaled examples.

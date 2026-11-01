@@ -1,0 +1,31 @@
+host	verdict	address	secs	detail
+golang.org	accessible	go.dev	18	
+nodejs.org	accessible	nodejs.org	8	
+mozilla.org	accessible	mozilla.org	9	
+apache.org	accessible	apache.org	8	
+kernel.org	accessible	kernel.org	11	
+ubuntu.com	blocked	ubuntu.com	6	
+archlinux.org	unobserved	archlinux.org	5	block page names 'ubuntu.com'
+fedoraproject.org	blocked	fedoraproject.org	5	
+gnu.org	blocked	gnu.org	5	
+sqlite.org	unobserved	sqlite.org	6	block page names 'gnu.org'
+postgresql.org	blocked	postgresql.org	5	
+redis.io	blocked	redis.io	5	
+docker.com	unobserved	redis.io	5	address showed 'redis.io'
+rottentomatoes.com	unobserved	redis.io	5	address showed 'redis.io'
+metacritic.com	unobserved	redis.io	6	address showed 'redis.io'
+goodreads.com	unobserved	redis.io	5	address showed 'redis.io'
+epicurious.com	unobserved	redis.io	6	address showed 'redis.io'
+bonappetit.com	unobserved	redis.io	5	address showed 'redis.io'
+nationalgeographic.com	unobserved	redis.io	5	address showed 'redis.io'
+weather.com	unobserved	redis.io	6	address showed 'redis.io'
+wolframalpha.com	unobserved	redis.io	5	address showed 'redis.io'
+khanacademy.org	unobserved	redis.io	5	address showed 'redis.io'
+coursera.org	unobserved	redis.io	5	address showed 'redis.io'
+edx.org	unobserved	redis.io	6	address showed 'redis.io'
+duolingo.com	unobserved	redis.io	5	address showed 'redis.io'
+ted.com	unobserved	redis.io	5	address showed 'redis.io'
+archive.org	unobserved	redis.io	5	address showed 'redis.io'
+nasa.gov	unobserved	redis.io	5	address showed 'redis.io'
+noaa.gov	unobserved	redis.io	6	address showed 'redis.io'
+nih.gov	unobserved	redis.io	5	address showed 'redis.io'

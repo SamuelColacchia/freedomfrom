@@ -1,0 +1,2 @@
+host	verdict	address	secs	detail
+golang.org	unobserved		4	could not reach Safari's address field

@@ -1,0 +1,6 @@
+host	verdict	address	secs	detail
+wikipedia.org	accessible	wikipedia.org	18	
+www.wikipedia.org	accessible	wikipedia.org	16	
+en.wikipedia.org	blocked	en.wikipedia.org	13	
+de.wikipedia.org	accessible	de.wikipedia.org	20	
+fr.wikipedia.org	accessible	fr.wikipedia.org	24	

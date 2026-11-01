@@ -1,0 +1,5 @@
+scenario=single-25 label=sweep manifest=86718fca1472 device=00008132-001C65641E85001C
+started=2026-10-31T22:48:54Z
+device_row=00008132-001C65641E85001C iPad (9) 27.0.1 localNetwork fd1a:7ace:db7a::1 connected 1F68B53A-7816-5C57-BA1B-39DA063BED60
+finished=2026-10-31T23:07:40Z
+status={"at":"2026-10-31T23:07:41Z","authorization":"approved","authorizationSettledMs":53,"readback":{"filterProbeA":{"count":25,"domains":["aljazeera.com","apache.org","archlinux.org","arstechnica.com","bbc.co.uk","cnn.com","engadget.com","fedoraproject.org","github.com","gitlab.com","gnu.org","golang.org","kernel.org","mozilla.org","nature.com","nodejs.org","npr.org","python.org","rust-lang.org","sqlite.org","techcrunch.com","theguardian.com","theverge.com","ubuntu.com","wired.com"],"policy":"specific"},"filterProbeB":{"policy":"unset"}}}
