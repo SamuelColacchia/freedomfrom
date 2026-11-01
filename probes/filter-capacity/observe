@@ -126,12 +126,14 @@ score_ui() {
     detail="address showed '$addr'"
     verdict=unobserved
   fi
-  # A block page names the host it blocked. It must name this one: a page left
-  # over from the host before, or one naming only a parent, proves nothing here.
+  # A block page names the host it blocked: this one, or a parent of it, which
+  # is what Safari shows for www.wikipedia.org when wikipedia.org is listed.
+  # Since about:blank precedes every host, that cannot be a leftover page. A
+  # page naming any other host is (stuck sweeps before about:blank showed it).
   local named
   if [[ "$verdict" == blocked ]]; then
     named=$(blocked_host "$ui")
-    if [[ "$named" != "$host" ]]; then
+    if [[ -z "$named" || ( "$named" != "$host" && "$host" != *".$named" ) ]]; then
       detail="block page names '$named'"
       verdict=unobserved
     fi
