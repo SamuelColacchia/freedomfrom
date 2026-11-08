@@ -9,7 +9,7 @@ set -euo pipefail
 
 HOST="${FREEDOMFROM_MAC_HOST:-mac}"
 ROOT="${FREEDOMFROM_MAC_ROOT:-builds/freedomfrom}"   # relative to the Mac's $HOME
-SIM="${FREEDOMFROM_SIM:-iPhone 17 Pro}"
+SIM="${FREEDOMFROM_SIM:-iPhone 18 Pro}"
 DEVICE="${FREEDOMFROM_DEVICE:-}"
 MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"   # ~/projects/macbridge; signs and installs on the phone
 

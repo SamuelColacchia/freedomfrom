@@ -117,7 +117,8 @@ struct HoldToConfirm: View {
     /// drag reports every tremor in a thumb, and only the first begins a hold.
     @State private var holding: Task<Void, Never>?
 
-    /// When the finger went down, and whether this press has already counted.
+    /// When the finger went down, on the touch's own clock, and whether this
+    /// press has already counted.
     @State private var startedAt: Date?
     @State private var fired = false
 
@@ -148,15 +149,15 @@ struct HoldToConfirm: View {
         // needed `maximumDistance` for. A thumb can wander the whole screen.
         .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in begin() }
-                .onEnded { _ in end() }
+                .onChanged { value in begin(at: value.time) }
+                .onEnded { value in end(at: value.time) }
         )
     }
 
-    private func begin() {
+    private func begin(at touchedDown: Date) {
         guard holding == nil else { return }
 
-        startedAt = Date()
+        startedAt = touchedDown
         fired = false
         withAnimation(.linear(duration: duration)) { progress = 1 }
         holding = Task { @MainActor in
@@ -168,7 +169,7 @@ struct HoldToConfirm: View {
         }
     }
 
-    private func end() {
+    private func end(at liftedOff: Date) {
         holding?.cancel()
         holding = nil
 
@@ -176,7 +177,13 @@ struct HoldToConfirm: View {
         // duration returns, so a thumb lifted *on* the fill lands in between and
         // would cancel a hold that was already long enough. Elapsed time settles
         // it rather than whichever of the two happened to win.
-        if let startedAt, Date().timeIntervalSince(startedAt) >= duration { fire() }
+        //
+        // Elapsed on the touch's own timestamps, not on when this code ran. The
+        // first change reaches the app after the finger is down: on the iOS 27.2
+        // simulator a press of exactly 1.5s measured 1.500s on its events and
+        // 1.433s between the two callbacks, so a hold of exactly its duration
+        // was cancelled (#85).
+        if let startedAt, liftedOff.timeIntervalSince(startedAt) >= duration { fire() }
         startedAt = nil
 
         withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
