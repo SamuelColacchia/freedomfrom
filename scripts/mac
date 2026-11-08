@@ -164,10 +164,13 @@ EOF
 # first, Xcode 27 the second), and wakes an idle Wi-Fi phone rather than
 # calling it absent. Unset, it takes the one phone there is.
 #
-# install_on_device DIR SCHEME [XCODEBUILD-ARGS...]: DIR is the project macbridge
-# mirrors, so the product and the probe never share a derived-data directory.
+# install_on_device DIR CONTAINER SCHEME [XCODEBUILD-ARGS...]: DIR is the project
+# macbridge mirrors, so the product and the probes never share a derived-data
+# directory. CONTAINER is the .xcodeproj or .xcworkspace inside it.
 install_on_device() {
-  local dir=$1 scheme=$2; shift 2
+  local dir=$1 container=$2 scheme=$3; shift 3
+  local kind=-project
+  [[ "$container" == *.xcworkspace ]] && kind=-workspace
   if ! command -v "$MACBRIDGE" >/dev/null 2>&1; then
     echo "scripts/mac needs macbridge's 'mac' on PATH (~/projects/macbridge, bin/mac) to reach a device." >&2
     return 3
@@ -183,7 +186,7 @@ install_on_device() {
   fi
 
   MAC_HOST="$HOST" "$MACBRIDGE" xcb -C "$dir" --sign -- \
-    -project "$scheme.xcodeproj" -scheme "$scheme" \
+    "$kind" "$container" -scheme "$scheme" \
     -destination 'generic/platform=iOS' \
     -archivePath "../derived/$scheme.xcarchive" \
     "$@" archive
@@ -195,14 +198,21 @@ cmd_device() {
   announce_hardware_pass
   local pass=()
   [[ -n "$PASS" ]] && pass=("$PASS")
-  install_on_device "$REPO" "$SCHEME" ${pass[@]+"${pass[@]}"}
+  install_on_device "$REPO" "$SCHEME.xcodeproj" "$SCHEME" ${pass[@]+"${pass[@]}"}
 }
 
 # The filter-capacity probe for #80: its own project, bundle and stores, so it
 # installs beside FreedomFrom without touching it. Never takes the hardware-pass
 # flag; the probe has no commitment to release.
 cmd_probe() {
-  install_on_device "$REPO/probes/filter-capacity" FilterProbe
+  install_on_device "$REPO/probes/filter-capacity" FilterProbe.xcodeproj FilterProbe
+}
+
+# The URL-filter probe for #83: Apple's SimpleURLFilter sample with our bundle
+# IDs, in its own project and bundle, like the capacity probe. Its PIR server
+# runs in Docker; see probes/url-filter/PROBE.md.
+cmd_urlprobe() {
+  install_on_device "$REPO/probes/url-filter" SimpleURLFilter.xcworkspace SimpleURLFilter
 }
 
 cmd_help() {
@@ -220,6 +230,8 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
                    macbridge. FREEDOMFROM_DEVICE picks when several are paired.
   probe            archive, sign and install the #80 filter-capacity probe the
                    same way. See probes/filter-capacity/README.md.
+  urlprobe         archive, sign and install the #83 URL-filter probe the same
+                   way. See probes/url-filter/PROBE.md.
   clean            drop the derived-data cache and the generated project.
 
 Set FREEDOMFROM_HARDWARE_PASS=1 to compile in a release control for the
@@ -240,6 +252,7 @@ case "${1:-help}" in
   rawlog) shift; cmd_rawlog "$@" ;;
   device) shift; cmd_device ;;
   probe)  shift; cmd_probe ;;
+  urlprobe) shift; cmd_urlprobe ;;
   clean)  shift; cmd_clean ;;
   help|-h|--help) cmd_help ;;
   *) echo "unknown verb: $1" >&2; echo >&2; cmd_help >&2; exit 2 ;;

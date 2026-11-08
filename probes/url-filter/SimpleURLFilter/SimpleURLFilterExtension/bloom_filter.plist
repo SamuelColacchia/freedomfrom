@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bitCount</key>
+	<integer>144</integer>
+	<key>byteCount</key>
+	<integer>18</integer>
+	<key>data</key>
+	<data>
+	drTfH9rdTUxh8MMyOMHdj00m
+	</data>
+	<key>falsePositiveTolerance</key>
+	<real>0.001</real>
+	<key>hashCount</key>
+	<integer>10</integer>
+	<key>itemCount</key>
+	<integer>10</integer>
+	<key>murmurSeed</key>
+	<integer>624656550</integer>
+</dict>
+</plist>

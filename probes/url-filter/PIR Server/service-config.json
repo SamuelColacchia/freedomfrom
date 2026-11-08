@@ -1,0 +1,14 @@
+{
+  "tokens": [
+    "AAAA",
+    "BBBB",
+    "CCCC"
+  ],
+  "usecases": [
+    {
+      "fileStem": "url",
+      "shardCount": 1,
+      "name": "com.samuelcolacchia.freedomfrom.urlfilterprobe.extension.url.filtering"
+    }
+  ]
+}

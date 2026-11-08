@@ -1,0 +1,40 @@
+rows {
+  keyword: "example.com"
+  value: "1"
+}
+rows {
+  keyword: "example2.com"
+  value: "1"
+}
+rows {
+  keyword: "example3.com"
+  value: "1"
+}
+rows {
+  keyword: "example4.com"
+  value: "1"
+}
+rows {
+  keyword: "example5.com"
+  value: "1"
+}
+rows {
+  keyword: "example6.com"
+  value: "1"
+}
+rows {
+  keyword: "example7.com"
+  value: "1"
+}
+rows {
+  keyword: "example8.com"
+  value: "1"
+}
+rows {
+  keyword: "example9.com"
+  value: "1"
+}
+rows {
+  keyword: "example10.com/resource?query=bugs"
+  value: "1"
+}
