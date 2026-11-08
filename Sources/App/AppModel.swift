@@ -47,6 +47,9 @@ final class AppModel {
 
     private let log = Log(.app)
     private let marker = InstallMarker()
+    /// Every authorization reading this process has made, so a revoke can be
+    /// told from a value that has not loaded yet (#54, #60).
+    private var authorization = AuthorizationTrail()
     private var reconciler: Reconciler { Reconciler(log: log) }
 
     var destination: Destination {
@@ -110,21 +113,34 @@ final class AppModel {
     /// so a moment of weakness does not end a month of commitment. Declining
     /// the re-request is accepted and not pursued.
     ///
-    /// **The status is logged and never judged.** It used to be read here and
+    /// **No single status reading is judged.** One used to be read here and
     /// passed in as evidence of a break, which marked a running commitment
     /// broken on every cold launch, because the framework has not loaded it yet
-    /// on a process that young (#54). The mark is made inside the
-    /// reconciliation now, from a registration the system actually refused —
-    /// see `BreakObservation`. What is left here is the one thing only a launch
+    /// on a process that young (#54). What is judged now is a loss: this
+    /// process read `.approved` earlier and reads something else now. The
+    /// reconciliation also marks a registration the system refused. See
+    /// `BreakObservation`. The other thing passed in is the one only a launch
     /// can see, which is a missing install marker.
     private func reconcile(reinstalled: Bool) async {
-        log.authorization(String(describing: AuthorizationCenter.shared.authorizationStatus))
+        let lost = readAuthorization()
 
-        apply(await offMainActor(brokenObserved: reinstalled))
+        apply(await offMainActor(brokenObserved: reinstalled || lost))
 
         guard record.active != nil, !Self.isAuthorized else { return }
-        await requestAuthorization()
-        if Self.isAuthorized { apply(await offMainActor()) }
+        let lostSinceRequest = await requestAuthorization()
+        if Self.isAuthorized || lostSinceRequest {
+            apply(await offMainActor(brokenObserved: lostSinceRequest))
+        }
+    }
+
+    /// Reads the status, logs it, and reports whether it is the loss of an
+    /// approval this process had already read.
+    private func readAuthorization() -> Bool {
+        let status = AuthorizationCenter.shared.authorizationStatus
+        log.authorization(String(describing: status))
+        let lost = authorization.observe(approved: status == .approved)
+        if lost { log.authorizationLost() }
+        return lost
     }
 
     /// A reconciliation touches the Keychain, five `ManagedSettings` writes —
@@ -165,7 +181,11 @@ final class AppModel {
         AuthorizationCenter.shared.authorizationStatus == .approved
     }
 
-    func requestAuthorization() async {
+    /// Returns whether the reading after the request is a lost approval, which
+    /// only `reconcile` has a commitment to mark with. The other callers have
+    /// nothing running to mark.
+    @discardableResult
+    func requestAuthorization() async -> Bool {
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
         } catch {
@@ -173,7 +193,7 @@ final class AppModel {
             // of screen for an anomaly, so the app asks again next launch.
             log.authorization("request refused")
         }
-        log.authorization(String(describing: AuthorizationCenter.shared.authorizationStatus))
+        return readAuthorization()
     }
 
     // MARK: - First run

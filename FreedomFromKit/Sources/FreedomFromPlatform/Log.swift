@@ -143,6 +143,13 @@ public struct Log: Sendable {
         logger.notice("authorization state=\(state, privacy: .public)")
     }
 
+    /// This process had already read `.approved`, and the reading just logged
+    /// is something else. This is the break signal #60 is waiting to see on a
+    /// device, so it has its own line beside `marked broken`.
+    public func authorizationLost() {
+        logger.notice("authorization lost after approved")
+    }
+
     private static func stamp(_ date: Date) -> String {
         date.formatted(.iso8601)
     }
