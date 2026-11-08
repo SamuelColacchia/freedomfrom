@@ -1,0 +1,5 @@
+scenario=single-51 label=sweep manifest=86718fca1472 device=00008132-001C65641E85001C
+started=2026-10-31T23:23:39Z
+device_row=00008132-001C65641E85001C iPad (9) 27.0.1 localNetwork fd1a:7ace:db7a::1 connected 1F68B53A-7816-5C57-BA1B-39DA063BED60
+finished=2026-10-31T23:39:38Z
+status={"at":"2026-10-31T23:39:38Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"count":50,"domains":["aljazeera.com","apache.org","archive.org","archlinux.org","arstechnica.com","bbc.co.uk","bonappetit.com","cnn.com","coursera.org","docker.com","duolingo.com","edx.org","engadget.com","epicurious.com","europa.eu","fedoraproject.org","github.com","gitlab.com","gnu.org","golang.org","goodreads.com","gov.uk","kernel.org","khanacademy.org","metacritic.com","mozilla.org","nasa.gov","nationalgeographic.com","nature.com","nih.gov","noaa.gov","nodejs.org","npr.org","postgresql.org","python.org","redis.io","rottentomatoes.com","rust-lang.org","sqlite.org","techcrunch.com","ted.com","theguardian.com","theverge.com","ubuntu.com","un.org","usa.gov","weather.com","who.int","wired.com","wolframalpha.com"],"policy":"specific"},"filterProbeB":{"policy":"unset"}}}

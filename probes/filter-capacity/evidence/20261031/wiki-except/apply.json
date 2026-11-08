@@ -1,0 +1,1 @@
+{"at":"2026-11-01T01:46:25Z","authorization":"approved","authorizationSettledMs":50,"readback":{"filterProbeA":{"count":1,"domains":["wikipedia.org"],"except":["en.wikipedia.org"],"exceptCount":1,"policy":"auto"},"filterProbeB":{"policy":"unset"}},"scenario":"wiki-except","written":{"filterProbeA":"auto","filterProbeB":"none"}}

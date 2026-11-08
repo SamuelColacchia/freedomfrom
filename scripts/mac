@@ -163,10 +163,13 @@ EOF
 # the CoreDevice UUID, the hardware UDID or the name (Xcode 26 printed the
 # first, Xcode 27 the second), and wakes an idle Wi-Fi phone rather than
 # calling it absent. Unset, it takes the one phone there is.
-cmd_device() {
-  announce_hardware_pass
+#
+# install_on_device DIR SCHEME [XCODEBUILD-ARGS...]: DIR is the project macbridge
+# mirrors, so the product and the probe never share a derived-data directory.
+install_on_device() {
+  local dir=$1 scheme=$2; shift 2
   if ! command -v "$MACBRIDGE" >/dev/null 2>&1; then
-    echo "scripts/mac device needs macbridge's 'mac' on PATH (~/projects/macbridge, bin/mac)." >&2
+    echo "scripts/mac needs macbridge's 'mac' on PATH (~/projects/macbridge, bin/mac) to reach a device." >&2
     return 3
   fi
   local row
@@ -179,15 +182,27 @@ cmd_device() {
     return 3
   fi
 
+  MAC_HOST="$HOST" "$MACBRIDGE" xcb -C "$dir" --sign -- \
+    -project "$scheme.xcodeproj" -scheme "$scheme" \
+    -destination 'generic/platform=iOS' \
+    -archivePath "../derived/$scheme.xcarchive" \
+    "$@" archive
+  MAC_HOST="$HOST" MAC_DEVICE="$(cut -f1 <<<"$row")" "$MACBRIDGE" phone install \
+    "$(basename "$dir")/derived/$scheme.xcarchive/Products/Applications/$scheme.app"
+}
+
+cmd_device() {
+  announce_hardware_pass
   local pass=()
   [[ -n "$PASS" ]] && pass=("$PASS")
-  MAC_HOST="$HOST" "$MACBRIDGE" xcb -C "$REPO" --sign -- \
-    -project "$SCHEME.xcodeproj" -scheme "$SCHEME" \
-    -destination 'generic/platform=iOS' \
-    -archivePath "../derived/$SCHEME.xcarchive" \
-    ${pass[@]+"${pass[@]}"} archive
-  MAC_HOST="$HOST" MAC_DEVICE="$(cut -f1 <<<"$row")" "$MACBRIDGE" phone install \
-    "$(basename "$REPO")/derived/$SCHEME.xcarchive/Products/Applications/$SCHEME.app"
+  install_on_device "$REPO" "$SCHEME" ${pass[@]+"${pass[@]}"}
+}
+
+# The filter-capacity probe for #80: its own project, bundle and stores, so it
+# installs beside FreedomFrom without touching it. Never takes the hardware-pass
+# flag; the probe has no commitment to release.
+cmd_probe() {
+  install_on_device "$REPO/probes/filter-capacity" FilterProbe
 }
 
 cmd_help() {
@@ -203,6 +218,8 @@ scripts/mac VERB — run the build on $HOST. Every verb syncs first.
   rawlog [lines]   tail the unfiltered xcodebuild log.
   device           archive, sign and install on the phone, unattended, through
                    macbridge. FREEDOMFROM_DEVICE picks when several are paired.
+  probe            archive, sign and install the #80 filter-capacity probe the
+                   same way. See probes/filter-capacity/README.md.
   clean            drop the derived-data cache and the generated project.
 
 Set FREEDOMFROM_HARDWARE_PASS=1 to compile in a release control for the
@@ -222,6 +239,7 @@ case "${1:-help}" in
   log)    shift; cmd_log "$@" ;;
   rawlog) shift; cmd_rawlog "$@" ;;
   device) shift; cmd_device ;;
+  probe)  shift; cmd_probe ;;
   clean)  shift; cmd_clean ;;
   help|-h|--help) cmd_help ;;
   *) echo "unknown verb: $1" >&2; echo >&2; cmd_help >&2; exit 2 ;;

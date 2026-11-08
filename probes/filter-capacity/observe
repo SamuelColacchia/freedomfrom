@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+#
+# Drive the #80 filter-capacity probe on a device through macbridge, and record
+# what Safari shows for every host a scenario names. See README.md beside this.
+#
+#   observe preflight            check the device, WebDriverAgent, Safari and the probe
+#   observe status               the probe's authorization and both stores, as JSON
+#   observe apply ID             write scenario ID to the probe's stores
+#   observe sweep ID [LABEL]     observe every host ID names, without applying
+#   observe scenario ID          apply, then sweep
+#   observe reboot               restart the device and wait for it to come back
+#   observe summary [RUN]        verdict counts per sweep
+#   observe report [RUN]         listed vs unlisted hosts against verdicts, per sweep
+#   observe rescore ID [LABEL]   re-derive a sweep's verdicts from its captured UI trees
+#
+# Every row is a screenshot and a full UI tree under results/RUN/, plus one
+# line in rows.tsv. A row is only ever what the screen showed: a host that never
+# settled is "unobserved", never assumed.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST="$HERE/scenarios.json"
+BUNDLE=com.samuelcolacchia.freedomfrom.filterprobe
+MACBRIDGE="${FREEDOMFROM_MACBRIDGE:-mac}"
+export MAC_DEVICE="${FREEDOMFROM_DEVICE:?set FREEDOMFROM_DEVICE to the device under test}"
+RUN="${PROBE_RUN:-$(date +%Y%m%d)}"
+OUT="$HERE/results/$RUN"
+SETTLE_SECS="${PROBE_SETTLE_SECS:-25}"
+
+# Safari's own page for a Screen Time block, and its own pages for a load that
+# failed. The block wording is Safari's on iPadOS 27.0.1, read off the first real
+# block (single-25, bbc.co.uk): "Website Not Allowed", and "“host” is a
+# restricted website." Recheck it on any other OS (README, "Calibration").
+BLOCKED_RE='Website Not Allowed|is a restricted website'
+FAILED_RE="Safari (Can.t|Cannot) Open the Page|can.t be found|could not be found|not connected to the internet|network connection was lost|request timed out|Cannot Connect to Server"
+
+phone() { "$MACBRIDGE" phone "$@"; }
+die() { echo "observe: $*" >&2; exit 1; }
+
+manifest_hash() { sha256sum "$MANIFEST" | cut -c1-12; }
+
+hosts_for() {
+  jq -er --arg id "$1" '.scenarios[] | select(.id == $id) | .observe[]' "$MANIFEST" \
+    || die "no scenario named $1 in scenarios.json"
+}
+
+# The probe prints one JSON line and exits; devicectl's own chatter is dropped.
+probe() { phone run "$BUNDLE" "$@" 2>/dev/null | grep -E '^\{' | tail -n1; }
+
+cmd_status() { probe status; }
+
+cmd_preflight() {
+  phone which >/dev/null || die "device $MAC_DEVICE is not reachable"
+  phone wda-status >/dev/null 2>&1 || phone wda-start >/dev/null || die "WebDriverAgent will not start"
+  local st; st=$(probe status)
+  [[ -n "$st" ]] || die "the probe did not answer; install it with: scripts/mac probe"
+  jq -e '.authorization == "approved"' >/dev/null <<<"$st" \
+    || die "the probe is not authorized ($(jq -r .authorization <<<"$st")); open Filter Probe and tap Authorize Filter Probe"
+  phone launch com.apple.mobilesafari >/dev/null
+  local tabs; tabs=$(phone ui | grep -c "TabBarTab?" || true)
+  (( tabs == 0 )) || die "Safari has $tabs tabs open; close all but one so every row navigates the same tab"
+  echo "ready: $(jq -c '{authorization, readback: (.readback | map_values(.policy))}' <<<"$st") manifest $(manifest_hash)"
+}
+
+cmd_apply() {
+  local id=$1 dir="$OUT/$1"
+  mkdir -p "$dir"
+  local line; line=$(probe apply "$id")
+  [[ -n "$line" ]] || die "the probe printed nothing for apply $id"
+  printf '%s\n' "$line" > "$dir/apply.json"
+  jq -e '.error == null and .authorization == "approved"' >/dev/null <<<"$line" \
+    || die "apply $id failed: $line"
+  echo "applied $id: $(jq -c '.readback | map_values({policy, count, exceptCount})' <<<"$line")"
+}
+
+# The address field Safari shows for the active tab, without the bidi mark it
+# prefixes, lower-cased. Empty when no tab is showing a page.
+address_of() {
+  grep -m1 -E "identifier: 'TabBarItemTitleContainer', label: 'Address', value:" "$1" \
+    | sed -E "s/.*value: //; s/, (Selected|Focused).*//; s/^\xe2\x80\x8e//" | tr 'A-Z' 'a-z'
+}
+
+# A row counts only if Safari ended up somewhere this host can lead: itself,
+# its www form or apex, a subdomain of it, or the redirect target recorded when
+# the list was made. Another domain altogether is never this host's row.
+#
+# Safari cuts a long address short with "..." in what it exposes, so a cut
+# address matches when it is the start of one of those exact names.
+address_matches() {
+  local host=$1 addr=$2 redirect cut c
+  redirect=$(jq -r --arg h "$host" '.redirects[$h] // "" | sub("^https?://"; "") | sub("/.*$"; "")' "$MANIFEST")
+  case "$addr" in
+    *...|*$'\xe2\x80\xa6')
+      cut=${addr%...}; cut=${cut%$'\xe2\x80\xa6'}
+      (( ${#cut} >= 8 )) || return 1
+      for c in "$host" "www.$host" "${host#www.}" "$redirect" "${redirect#www.}"; do
+        [[ -n "$c" && "$c" == "$cut"* ]] && return 0
+      done
+      return 1 ;;
+    "$host"|"www.$host"|"${host#www.}"|*".${host#www.}") return 0 ;;
+  esac
+  [[ -n "$redirect" && ( "$addr" == "$redirect" || "$addr" == "${redirect#www.}" ) ]]
+}
+
+# The host a block page names, from '"<host>" is a restricted website.', with
+# the curly quotes and the bidi isolates Safari wraps it in removed.
+blocked_host() {
+  grep -o -m1 -E "label: '[^']*is a restricted website" "$1" \
+    | sed -E "s/^label: '//; s/ is a restricted website$//" \
+    | sed -E $'s/\xe2\x80\x9c|\xe2\x80\x9d|\xe2\x81\xa6|\xe2\x81\xa9|\xe2\x80\xaa|\xe2\x80\xac//g' \
+    | tr 'A-Z' 'a-z'
+}
+
+# The verdict one captured UI tree supports, as verdict, address and detail
+# joined by the unit separator: a tab is whitespace to read, which would fold an
+# empty address away and shift the detail into its place.
+# Checked in this order, so a block page is never read as a load.
+score_ui() {
+  local host=$1 ui=$2 verdict=unobserved detail="" addr
+  if grep -q -E "$BLOCKED_RE" "$ui"; then verdict=blocked
+  elif grep -q -E "$FAILED_RE" "$ui"; then verdict=failed
+  elif grep -q "IsPageLoaded=true" "$ui"; then verdict=accessible
+  fi
+  # A tree with no address field is an empty address, not a reason to stop.
+  addr=$(address_of "$ui" || true)
+  if [[ "$verdict" != unobserved ]] && ! address_matches "$host" "$addr"; then
+    detail="address showed '$addr'"
+    verdict=unobserved
+  fi
+  # A block page names the host it blocked: this one, or a parent of it, which
+  # is what Safari shows for www.wikipedia.org when wikipedia.org is listed.
+  # Since about:blank precedes every host, that cannot be a leftover page. A
+  # page naming any other host is (stuck sweeps before about:blank showed it).
+  local named
+  if [[ "$verdict" == blocked ]]; then
+    named=$(blocked_host "$ui" || true)
+    if [[ -z "$named" || ( "$named" != "$host" && "$host" != *".$named" ) ]]; then
+      detail="block page names '$named'"
+      verdict=unobserved
+    fi
+  fi
+  if [[ "$verdict" == unobserved && -z "$detail" ]]; then detail="nothing settled in ${SETTLE_SECS}s"; fi
+  if [[ "$verdict" == failed ]]; then detail=$(grep -o -m1 -E "$FAILED_RE" "$ui" || true); fi
+  printf '%s\x1f%s\x1f%s\n' "$verdict" "$addr" "$detail"
+}
+
+observe_host() {
+  local host=$1 dir=$2 ui="$2/$1.ui.txt" verdict addr detail
+  local started=$SECONDS
+  : > "$ui"
+  # On a block page, tapping Address leaves the old URL unselected, and typing
+  # appended to it (https://redis.io/https://docker.com/), so every row after a
+  # block navigated nowhere. Deletes first empty the field whatever its state;
+  # WebDriverAgent sends \b as the keyboard's delete key.
+  #
+  # about:blank goes in between, so the page the previous host left behind can
+  # never be the page this host is scored on.
+  local clear; clear=$(printf '\b%.0s' {1..120})
+  if { phone tap Address && phone type "$clear" && phone type "about:blank"$'\n' \
+       && phone tap Address && phone type "$clear" && phone type "https://$host/"$'\n'; } >/dev/null 2>&1; then
+    while (( SECONDS - started < SETTLE_SECS )); do
+      phone ui > "$ui" 2>/dev/null || true
+      # An if, not '&& break': as the loop's last command a failed grep made the
+      # loop return 1 when nothing settled, and set -e killed the whole sweep.
+      if grep -q -E "$BLOCKED_RE|$FAILED_RE|IsPageLoaded=true" "$ui"; then break; fi
+    done
+    IFS=$'\x1f' read -r verdict addr detail < <(score_ui "$host" "$ui")
+  else
+    verdict=unobserved addr="" detail="could not reach Safari's address field"
+  fi
+  phone shot "$dir/$host.png" >/dev/null 2>&1 || detail="${detail:+$detail; }no screenshot"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$verdict" "$addr" "$(( SECONDS - started ))" "$detail"
+}
+
+# Re-derive every row of a sweep from the UI trees it captured, after a fix to
+# how a tree is read. Nothing is navigated or assumed: a row that never reached
+# the address field stays as it was. The first rescore keeps rows.orig.tsv.
+cmd_rescore() {
+  local dir="$OUT/$1/${2:-sweep}" line host secs detail nv na nd
+  [[ -f "$dir/rows.tsv" ]] || die "no sweep at $dir"
+  [[ -f "$dir/rows.orig.tsv" ]] || cp "$dir/rows.tsv" "$dir/rows.orig.tsv"
+  {
+    head -n1 "$dir/rows.orig.tsv"
+    tail -n +2 "$dir/rows.orig.tsv" | while IFS= read -r line; do
+      host=$(cut -f1 <<<"$line"); secs=$(cut -f4 <<<"$line"); detail=$(cut -f5 <<<"$line")
+      if [[ "$detail" == "could not reach"* || ! -s "$dir/$host.ui.txt" ]]; then
+        printf '%s\n' "$line"
+      else
+        IFS=$'\x1f' read -r nv na nd < <(score_ui "$host" "$dir/$host.ui.txt")
+        printf '%s\t%s\t%s\t%s\t%s\n' "$host" "$nv" "$na" "$secs" "$nd"
+      fi
+    done
+  } > "$dir/rows.tsv.new"
+  mv "$dir/rows.tsv.new" "$dir/rows.tsv"
+  { diff <(cut -f1,2 "$dir/rows.orig.tsv") <(cut -f1,2 "$dir/rows.tsv") || true; } | grep -E '^[<>]' || echo "  no verdict changed"
+  cmd_summary_one "$dir/rows.tsv"
+}
+
+cmd_sweep() {
+  local id=$1 label=${2:-sweep} dir="$OUT/$1/${2:-sweep}"
+  mkdir -p "$dir"
+  local rows="$dir/rows.tsv"
+  printf 'host\tverdict\taddress\tsecs\tdetail\n' > "$rows"
+  {
+    echo "scenario=$id label=$label manifest=$(manifest_hash) device=$MAC_DEVICE"
+    echo "started=$(date -u +%FT%TZ)"
+    echo "device_row=$(phone which | tr '\t' ' ')"
+  } > "$dir/meta.txt"
+  local host n=0 total; total=$(hosts_for "$id" | wc -l)
+  phone launch com.apple.mobilesafari >/dev/null
+  while IFS= read -r host; do
+    n=$((n + 1))
+    # stdin is the host list. A tap that fails makes macbridge rebuild its ssh
+    # tunnel, and ssh read the rest of the list: except-vs-block stopped at row 1.
+    observe_host "$host" "$dir" < /dev/null | tee -a "$rows" | awk -v n="$n" -v t="$total" -F'\t' '{printf "  [%d/%d] %-28s %s %s\n", n, t, $1, $2, $5}'
+  done < <(hosts_for "$id")
+  echo "finished=$(date -u +%FT%TZ)" >> "$dir/meta.txt"
+  echo "status=$(probe status)" >> "$dir/meta.txt"
+  cmd_summary_one "$rows"
+}
+
+cmd_scenario() { cmd_apply "$1"; cmd_sweep "$1" sweep; }
+
+cmd_reboot() {
+  phone reboot
+  local started=$SECONDS
+  sleep 20
+  until phone which >/dev/null 2>&1; do
+    (( SECONDS - started < 600 )) || die "the device did not come back within 10 minutes"
+    sleep 10
+  done
+  echo "back after $(( SECONDS - started ))s; unlock it if it asks, then: observe preflight"
+}
+
+cmd_summary_one() {
+  awk -F'\t' 'NR > 1 { c[$2]++; n++ } END { printf "  %s:", FILENAME; for (v in c) printf " %s=%d", v, c[v]; printf " total=%d\n", n }' "$1"
+}
+
+cmd_summary() {
+  local run="$HERE/results/${1:-$RUN}"
+  find "$run" -name rows.tsv | sort | while IFS= read -r f; do cmd_summary_one "$f"; done
+}
+
+# What each store held during each scenario, with 'keep' resolved to whatever
+# the store held in the scenario before it. One line per scenario:
+#   id <TAB> listed-hosts (space separated) <TAB> excepted-hosts
+listed_by_scenario() {
+  jq -r '
+    reduce .scenarios[] as $s ({state: {}, out: []};
+      .state as $prev
+      | .state = ($s.stores | with_entries(if .value == "keep" then .value = $prev[.key] else . end))
+      | .out += [[$s.id,
+          ([.state[] | select(. != null) | .domains // []] | add // [] | unique | join(" ")),
+          ([.state[] | select(. != null) | .except // []] | add // [] | unique | join(" "))]])
+    | .out[] | @tsv' "$MANIFEST"
+}
+
+# A host counts only if it was accessible at baseline: a page that never loaded
+# says nothing about filtering when it does not load later.
+cmd_report() {
+  local run="$HERE/results/${1:-$RUN}" base
+  base="$run/baseline/sweep/rows.tsv"
+  [[ -f "$base" ]] || die "no baseline sweep in $run"
+  printf 'scenario\tsweep\tlisted:blocked\tlisted:accessible\tlisted:other\tunlisted:blocked\tunlisted:accessible\tunlisted:other\texcluded\n'
+  local id listed except rows
+  while IFS=$'\t' read -r id listed except; do
+    for rows in "$run/$id"/*/rows.tsv; do
+      [[ -f "$rows" ]] || continue
+      awk -F'\t' -v listed=" $listed " -v id="$id" -v sweep="$(basename "$(dirname "$rows")")" '
+        FNR == NR { if (FNR > 1 && $2 == "accessible") ok[$1] = 1; next }
+        FNR == 1 { next }
+        !($1 in ok) { excluded++; next }
+        { side = index(listed, " " $1 " ") ? "listed" : "unlisted"
+          v = ($2 == "blocked" || $2 == "accessible") ? $2 : "other"
+          c[side ":" v]++ }
+        END { printf "%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", id, sweep,
+              c["listed:blocked"], c["listed:accessible"], c["listed:other"],
+              c["unlisted:blocked"], c["unlisted:accessible"], c["unlisted:other"], excluded }
+      ' "$base" "$rows"
+    done
+  done < <(listed_by_scenario)
+}
+
+# Everything runs inside main, called from the last line, so bash has parsed
+# the whole file before a sweep starts. A sweep takes half an hour, and bash
+# reads a plain script as it goes: editing it mid-run used to be read mid-run.
+main() {
+case "${1:-}" in
+  preflight) cmd_preflight ;;
+  status)    cmd_status ;;
+  apply)     cmd_apply "${2:?scenario}" ;;
+  sweep)     cmd_sweep "${2:?scenario}" "${3:-sweep}" ;;
+  scenario)  cmd_scenario "${2:?scenario}" ;;
+  reboot)    cmd_reboot ;;
+  summary)   cmd_summary "${2:-}" ;;
+  report)    cmd_report "${2:-}" ;;
+  rescore)   cmd_rescore "${2:?scenario}" "${3:-sweep}" ;;
+  *) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+}
+
+main "$@"; exit $?

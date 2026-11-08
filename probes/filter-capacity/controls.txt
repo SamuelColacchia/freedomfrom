@@ -1,0 +1,4 @@
+# Unlisted controls: never in any store, observed in every capacity scenario.
+fitbit.com
+garmin.com
+patagonia.com

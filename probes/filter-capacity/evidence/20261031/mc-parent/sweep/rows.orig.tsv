@@ -1,0 +1,4 @@
+host	verdict	address	secs	detail
+metalcloak.com	blocked	metalcloak.com	15	
+www.metalcloak.com	unobserved	metalcloak.com	13	block page names 'metalcloak.com'
+blog.metalcloak.com	blocked	blog.metalcloak.com	12	
