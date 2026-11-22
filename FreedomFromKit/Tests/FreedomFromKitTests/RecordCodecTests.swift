@@ -93,6 +93,29 @@ struct RecordCodecTests {
         #expect(decoded == original)
     }
 
+    /// Every build before ADR 0012 wrote its one running commitment under
+    /// `active`. An update lands while that commitment runs, so it must come
+    /// back as the only entry in the list, deadline and all.
+    @Test("a record from before concurrent commitments keeps its running one")
+    func singleActiveFromBeforeConcurrencyOpens() throws {
+        let original = fullRecord()
+
+        let decoded = try RecordCodec.decode(
+            withLegacyActiveKey(try RecordCodec.encode(original)))
+
+        #expect(decoded == original)
+    }
+
+    /// Moves the one commitment back under the key an older build wrote.
+    private func withLegacyActiveKey(_ data: Data) throws -> Data {
+        var record = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let commitments = try #require(record.removeValue(forKey: "commitments") as? [Any])
+        record["active"] = try #require(commitments.first)
+
+        return try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+    }
+
     /// Re-adds the two keys a draft used to carry, so the bytes under test are
     /// the ones an older build actually wrote rather than a hand-typed guess at
     /// them.
