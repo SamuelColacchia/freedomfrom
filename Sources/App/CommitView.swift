@@ -84,6 +84,7 @@ struct CommitView: View {
                 .foregroundStyle(selected ? Quiet.ink : Quiet.dim)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 13)
+                .contentShape(Rectangle())
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(ruled ? Quiet.hairline : .clear).frame(height: 1)
                 }

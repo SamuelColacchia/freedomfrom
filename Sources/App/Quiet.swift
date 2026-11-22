@@ -14,6 +14,9 @@ enum Quiet {
     /// One step down from the ink, for the second half of a two-part statement.
     static let quieted = Color(hex: 0x8D_8D_90)
     static let faint = Color(hex: 0x4D_4D_51)
+    /// Anything tappable that is not a button. Faint failed 4.5:1 against the
+    /// background, which is the floor for text a person has to find and read.
+    static let link = Color(hex: 0x8A_8A_8E)
     static let line = Color(hex: 0x31_31_34)
     static let hairline = Color(hex: 0x19_1A_1C)
     static let until = Color(hex: 0x9A_9A_9E)
@@ -50,10 +53,13 @@ extension View {
             .lineSpacing(5)
     }
 
+    /// One reading column, at most 560pt wide and centred, so an iPad gets a
+    /// page rather than a strip of text along its left edge.
     func quietScreen() -> some View {
-        frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        frame(maxWidth: 560, maxHeight: .infinity, alignment: .leading)
             .padding(.horizontal, 30)
             .padding(.vertical, 26)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Quiet.background)
             .toolbarBackground(Quiet.background, for: .navigationBar)
             .tint(Quiet.whisper)
@@ -122,6 +128,8 @@ struct HoldToConfirm: View {
     @State private var startedAt: Date?
     @State private var fired = false
 
+    private static let boundary: TimeInterval = 0.01
+
     var body: some View {
         ZStack(alignment: .leading) {
             // Scaled rather than sized to a `GeometryReader`'s width, so the
@@ -183,7 +191,15 @@ struct HoldToConfirm: View {
         // simulator a press of exactly 1.5s measured 1.500s on its events and
         // 1.433s between the two callbacks, so a hold of exactly its duration
         // was cancelled (#85).
-        if let startedAt, liftedOff.timeIntervalSince(startedAt) >= duration { fire() }
+        //
+        // Within a hair of the duration counts as the full hold. A press of
+        // exactly 1.5s measured `elapsed=1.500000` against `1.500000`, so a
+        // strict comparison passed or failed on the last bit of a timestamp,
+        // and an unrelated layout change was enough to flip it. Ten
+        // milliseconds is under one 60Hz frame: the bar is already drawn full.
+        if let startedAt, liftedOff.timeIntervalSince(startedAt) >= duration - Self.boundary {
+            fire()
+        }
         startedAt = nil
 
         withAnimation(.easeOut(duration: 0.2)) { progress = 0 }

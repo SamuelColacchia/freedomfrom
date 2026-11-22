@@ -19,7 +19,7 @@ struct RecordCodecTests {
             isBroken: false
         )
         return Record(
-            active: commitment,
+            commitments: [commitment],
             history: [
                 ClosedCommitment(
                     startedAt: started.addingTimeInterval(-86_400),
@@ -55,7 +55,7 @@ struct RecordCodecTests {
     func deadlineSurvives() throws {
         let original = fullRecord()
         let decoded = try RecordCodec.decode(RecordCodec.encode(original))
-        #expect(decoded.active?.deadline == original.active?.deadline)
+        #expect(decoded.commitments.first?.deadline == original.commitments.first?.deadline)
     }
 
     @Test("encoding is stable, so an unchanged record produces unchanged bytes")
@@ -91,6 +91,29 @@ struct RecordCodecTests {
             withLegacyDraftKeys(try RecordCodec.encode(original)))
 
         #expect(decoded == original)
+    }
+
+    /// Every build before ADR 0012 wrote its one running commitment under
+    /// `active`. An update lands while that commitment runs, so it must come
+    /// back as the only entry in the list, deadline and all.
+    @Test("a record from before concurrent commitments keeps its running one")
+    func singleActiveFromBeforeConcurrencyOpens() throws {
+        let original = fullRecord()
+
+        let decoded = try RecordCodec.decode(
+            withLegacyActiveKey(try RecordCodec.encode(original)))
+
+        #expect(decoded == original)
+    }
+
+    /// Moves the one commitment back under the key an older build wrote.
+    private func withLegacyActiveKey(_ data: Data) throws -> Data {
+        var record = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let commitments = try #require(record.removeValue(forKey: "commitments") as? [Any])
+        record["active"] = try #require(commitments.first)
+
+        return try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
     }
 
     /// Re-adds the two keys a draft used to carry, so the bytes under test are
@@ -151,10 +174,10 @@ struct CleanSlateTests {
             domains: []
         )
         var record = Record(
-            active: commitment, draft: Draft(domains: [WebDomain(canonical: "example.com")]))
+            commitments: [commitment], draft: Draft(domains: [WebDomain(canonical: "example.com")]))
 
         record.cleanSlate()
 
-        #expect(record.active == commitment)
+        #expect(record.commitments == [commitment])
     }
 }

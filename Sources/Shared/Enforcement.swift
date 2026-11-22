@@ -31,8 +31,11 @@ extension DeviceActivityName {
 enum Enforcement {
     static var store: ManagedSettingsStore { ManagedSettingsStore(named: .freedomfrom) }
 
-    /// Applies what a commitment named: a shield for its apps and categories,
-    /// the filter for its web domains.
+    /// Applies what every running commitment names, as one union: a shield
+    /// for their apps and categories, the filter for their web domains. One
+    /// store holds the union rather than a store per commitment, so ending one
+    /// commitment is reapplying the rest, and nothing rests on how iOS composes
+    /// stores it has never been watched composing (ADR 0012).
     ///
     /// Called at commit and again at every reconciliation that does not
     /// release, with whatever currently resolves — so a target that has churned
@@ -42,10 +45,10 @@ enum Enforcement {
     /// commitment's duration, with no per-commitment toggle: a toggle would be
     /// a lever the user's future weak self pulls at commit time (ADR 0001).
     /// There is no read-back of effective state, so nothing here is checked.
-    static func apply(selection: FamilyActivitySelection?, domains: [FreedomFromKit.WebDomain]) {
+    static func apply(selections: [FamilyActivitySelection], domains: [FreedomFromKit.WebDomain]) {
         let store = store
-        let applications = selection?.applicationTokens ?? []
-        let categories = selection?.categoryTokens ?? []
+        let applications = selections.reduce(into: Set<ApplicationToken>()) { $0.formUnion($1.applicationTokens) }
+        let categories = selections.reduce(into: Set<ActivityCategoryToken>()) { $0.formUnion($1.categoryTokens) }
 
         store.shield.applications = applications.isEmpty ? nil : applications
         // A category the *user* picked in the system picker is honoured;

@@ -5,8 +5,11 @@ import Foundation
 /// There is one Keychain record and no second store and no mirror, so there is
 /// never a question of which copy is right (ADR 0002). It outlives app
 /// deletion, which is what makes a break detectable at all.
-public struct Record: Equatable, Codable, Sendable {
-    public var active: Commitment?
+public struct Record: Equatable, Sendable {
+    /// Every commitment still running, each with its own targets and deadline.
+    /// They never merge: a target stays held while any of them names it
+    /// (ADR 0012, from the decision in #73).
+    public var commitments: [Commitment]
     public var history: [ClosedCommitment]
     public var draft: Draft
 
@@ -19,18 +22,25 @@ public struct Record: Equatable, Codable, Sendable {
     /// reconciliation point released sets this.
     public var endedScreenPending: Bool
 
+    /// The one code that unlocks a single commitment early, or `nil` when
+    /// none is set and nothing can be unlocked before its deadline (ADR 0012).
+    /// Untouched by a clean slate, and changed only while nothing runs.
+    public internal(set) var unlockCode: UnlockCode?
+
     public init(
-        active: Commitment? = nil,
+        commitments: [Commitment] = [],
         history: [ClosedCommitment] = [],
         draft: Draft = .empty,
         hasSeenFirstRun: Bool = false,
-        endedScreenPending: Bool = false
+        endedScreenPending: Bool = false,
+        unlockCode: UnlockCode? = nil
     ) {
-        self.active = active
+        self.commitments = commitments
         self.history = history
         self.draft = draft
         self.hasSeenFirstRun = hasSeenFirstRun
         self.endedScreenPending = endedScreenPending
+        self.unlockCode = unlockCode
     }
 
     public static let empty = Record()
@@ -39,6 +49,39 @@ public struct Record: Equatable, Codable, Sendable {
     public mutating func cleanSlate() {
         history = []
         draft = .empty
+    }
+}
+
+extension Record: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case commitments, history, draft, hasSeenFirstRun, endedScreenPending, unlockCode
+        /// The single running commitment every build before ADR 0012 wrote.
+        /// Read so an update neither releases nor extends it, never written.
+        case active
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let commitments = try container.decodeIfPresent([Commitment].self, forKey: .commitments) {
+            self.commitments = commitments
+        } else {
+            commitments = try container.decodeIfPresent(Commitment.self, forKey: .active).map { [$0] } ?? []
+        }
+        history = try container.decode([ClosedCommitment].self, forKey: .history)
+        draft = try container.decode(Draft.self, forKey: .draft)
+        hasSeenFirstRun = try container.decode(Bool.self, forKey: .hasSeenFirstRun)
+        endedScreenPending = try container.decode(Bool.self, forKey: .endedScreenPending)
+        unlockCode = try container.decodeIfPresent(UnlockCode.self, forKey: .unlockCode)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(commitments, forKey: .commitments)
+        try container.encode(history, forKey: .history)
+        try container.encode(draft, forKey: .draft)
+        try container.encode(hasSeenFirstRun, forKey: .hasSeenFirstRun)
+        try container.encode(endedScreenPending, forKey: .endedScreenPending)
+        try container.encodeIfPresent(unlockCode, forKey: .unlockCode)
     }
 }
 

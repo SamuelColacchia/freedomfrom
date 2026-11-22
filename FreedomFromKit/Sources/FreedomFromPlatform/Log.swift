@@ -128,6 +128,12 @@ public struct Log: Sendable {
         logger.notice("window suppressed reason=\(reason, privacy: .public)")
     }
 
+    /// One commitment ended before its deadline with the unlock code
+    /// (ADR 0012). Which one is not logged, as no target identity is.
+    public func unlocked() {
+        logger.notice("unlocked early")
+    }
+
     /// A commitment can end late, never early. How late is the observation.
     public func released(lateBy seconds: TimeInterval) {
         logger.notice("released late_by_seconds=\(Int(seconds.rounded()), privacy: .public)")

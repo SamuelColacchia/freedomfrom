@@ -4,6 +4,8 @@ freedomfrom is a self-restraint blocker: the person it blocks is the person who 
 
 **The honest claim, which the app's own copy may never exceed: freedomfrom resists casual bypass while authorized. It cannot prevent a determined bypass.**
 
+> **Amended by [ADR 0012](./0012-concurrent-commitments-an-unlock-code-and-hidden-contents.md).** There is now an in-app early exit: an app-owned unlock code that ends one commitment at a time. The Screen Time passcode still cannot be read or verified, which is why the code is the app's own.
+
 ## The three escape routes
 
 | # | Escape route | Closed by | Confidence |

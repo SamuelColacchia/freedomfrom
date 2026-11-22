@@ -17,9 +17,13 @@ struct EscapeView: View {
             Text("Settings → Screen Time →\nfreedomfrom → revoke.")
                 .say()
 
-            Text("That ends it. It takes about fifteen seconds and it will be written down.")
+            Text("That ends all of them. It takes about fifteen seconds and it will be written down.")
                 .whisper()
                 .padding(.top, 24)
+
+            Text("If an unlock code is set, it ends one early instead. That is written down too.")
+                .whisper()
+                .padding(.top, 16)
 
             Text(
                 "Deleting the app does not end it. While it is authorized, no app on this phone can be deleted and the clock is held automatic. Revoking ends both."
