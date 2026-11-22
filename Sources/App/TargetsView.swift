@@ -31,7 +31,7 @@ struct TargetsView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Text("\(model.chosen.picked)")
+                Text("\(model.chosen.picked + model.draft.domains.count)")
                     .font(.system(size: 64, weight: .ultraLight))
                     .foregroundStyle(Quiet.ink)
                 Text(chosenWords)
@@ -139,12 +139,15 @@ struct TargetsView: View {
         }
     }
 
-    /// "chosen" while the picker returned only apps, and the breakdown the
-    /// moment it returns a category — because the number above drops when a
+    /// "chosen" while only apps are chosen, and the breakdown the moment a
+    /// category or a website joins them — because the number above drops when a
     /// whole category replaces the apps in it, and a bare "chosen" beside a
     /// smaller number reads as having lost something rather than blocked more.
+    /// A typed website counts too, so a list of websites alone is not "0".
     private var chosenWords: String {
-        model.chosen.categories == 0 ? "chosen" : model.chosen.words
+        let domains = model.draft.domains.count
+        return model.chosen.categories == 0 && domains == 0
+            ? "chosen" : model.chosen.words(alsoDomains: domains)
     }
 
     private var placeholder: Text {
