@@ -278,19 +278,23 @@ final class AppModel {
     // MARK: - Commit
 
     func commit(_ length: CommitmentLength) async {
-        let now = Date()
         let handles = TargetHandles.mint(from: selection)
         let domains = record.draft.domains
         guard !handles.isEmpty || !domains.isEmpty, !exceedsDomainBudget else { return }
 
         // Enforcement is a precondition for a commitment existing, and
         // authorization is the only part of it the app can read back. Without
-        // it nothing is written and the app re-requests rather than reporting
-        // an error (ADR 0005).
-        guard Self.isAuthorized else {
+        // it the app re-requests rather than reporting an error (ADR 0005),
+        // and writes nothing unless the request is granted. Granted, the hold
+        // already given is the confirmation, so the commitment goes ahead
+        // instead of asking for a second one.
+        if !Self.isAuthorized {
             await requestAuthorization()
-            return
+            guard Self.isAuthorized else { return }
         }
+
+        // Read after any prompt, so its time is not taken out of the commitment.
+        let now = Date()
 
         var committed = record
         committed.draft.length = length
