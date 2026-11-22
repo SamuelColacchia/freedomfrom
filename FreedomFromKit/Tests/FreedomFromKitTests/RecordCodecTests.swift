@@ -19,7 +19,7 @@ struct RecordCodecTests {
             isBroken: false
         )
         return Record(
-            active: commitment,
+            commitments: [commitment],
             history: [
                 ClosedCommitment(
                     startedAt: started.addingTimeInterval(-86_400),
@@ -55,7 +55,7 @@ struct RecordCodecTests {
     func deadlineSurvives() throws {
         let original = fullRecord()
         let decoded = try RecordCodec.decode(RecordCodec.encode(original))
-        #expect(decoded.active?.deadline == original.active?.deadline)
+        #expect(decoded.commitments.first?.deadline == original.commitments.first?.deadline)
     }
 
     @Test("encoding is stable, so an unchanged record produces unchanged bytes")
@@ -151,10 +151,10 @@ struct CleanSlateTests {
             domains: []
         )
         var record = Record(
-            active: commitment, draft: Draft(domains: [WebDomain(canonical: "example.com")]))
+            commitments: [commitment], draft: Draft(domains: [WebDomain(canonical: "example.com")]))
 
         record.cleanSlate()
 
-        #expect(record.active == commitment)
+        #expect(record.commitments == [commitment])
     }
 }

@@ -106,12 +106,15 @@ public struct Commitment: Equatable, Codable, Sendable {
     }
 }
 
-/// The history's vocabulary, fixed at three values (ADR 0005). Broken and
-/// degraded can both be true of one commitment; the row reads broken.
+/// The history's vocabulary: three values from ADR 0005, and a fourth from
+/// ADR 0012. Broken and degraded can both be true of one commitment; the row
+/// reads broken. A commitment ended early with the unlock code reads unlocked,
+/// whatever else was true of it, because that is how it ended.
 public enum Outcome: String, Codable, Sendable {
     case completed
     case completedDegraded
     case broken
+    case unlocked
 }
 
 /// One row of the commitment history. Apps are a count because iOS never lets
