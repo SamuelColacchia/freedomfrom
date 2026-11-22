@@ -13,7 +13,7 @@ Everything here is Apple's sample except:
 |---|---|
 | Bundle IDs `com.samuelcolacchia.freedomfrom.urlfilterprobe` and `.extension` | Our identifiers, instead of the sample's team-suffixed `com.example` ones |
 | `DEVELOPMENT_TEAM = 6989TSP54U` in all three projects | SwiftBloomFilter is embedded in the app, so it signs with our team too |
-| `PIR Server/service-config.json` in the current format | `apple/pir-service-example` commit `f72d3b10` (16 Sep 2026) removed user tiers, and the sample's `users` list makes the server exit with `keyNotFound("tokens")`. Same three tokens, now a flat `tokens` list. The usecase is our extension ID plus `.url.filtering`, as Apple's setup article says |
+| `PIR Server/service-config.json` in the current format | `apple/pir-service-example` commit `f72d3b10` (16 Sep 2026) removed user tiers, and the sample's `users` list makes the server exit with `keyNotFound("tokens")`. Same three tokens, now a flat `tokens` list. The usecase is the **app's** bundle ID plus `.url.filtering`: the device asks for `com.samuelcolacchia.freedomfrom.urlfilterprobe.url.filtering`, and the extension-ID name this file first used made it fail with `NEURLFilterManager.Error` 9 (`serverSetupIncomplete`) |
 | `PIR Server/Dockerfile` pins `pir-service-example` to `bbb21535` | The sample cloned it at HEAD, which is how the config broke. `bbb21535` is the commit the running image was built from |
 
 ## The server
@@ -67,5 +67,31 @@ the filter appears.
 
 - [x] Server built and serving; reachable from the Mac's LAN address
 - [x] Probe installed on the iPad, development-signed
-- [ ] Probe 1. Blocked on the iPad passcode: XCTest asks for it to enable UI
-      automation, and enabling the filter asks for it too
+- [x] Probe 1, 2026-11-22, iPad (9), iPadOS 27.2.1. See below.
+
+## Probe 1 results, 2026-11-22
+
+iPad (9), iPadOS 27.2.1, development-signed, individual (non-managed) device.
+The server ran in Docker on the PC, reached through `pir-forward.py` on the Mac.
+WebDriverAgent was running, so no passcode was needed to drive the device.
+
+| Step | Observed |
+|---|---|
+| Apply with Enabled on | System alert: *"SimpleURLFilter" Would Like to Add URL Filter Configurations. All URL Requests on this iPad may be filtered.* Allow / Don't Allow. After Allow, Settings opened on **VPN** with *Enter iPad Passcode, Add URL Filter Configurations*. A person entered it. |
+| First attempt | "Stopped", `NEURLFilterManager.Error` 9 (`serverSetupIncomplete`). The server log said the device asked for usecase `…urlfilterprobe.url.filtering` and the server had only the sample's. Fixed in `service-config.json`; the image was rebuilt with the new config only. |
+| Second Apply | "Running". The server served `/config`, `/key`, then `/queries` on each lookup. No second passcode. |
+| example.com, filter on | Blocked: Safari's *"Safari can't open the page because it couldn't load any data."* No branded block page. |
+| example3.com, filter on | Blocked, same page. |
+| wikipedia.org, filter on | Loaded. |
+| Disable | "Disabled", one tap in the app, no passcode. |
+| example.com, example3.com, filter off | Both loaded. |
+
+So the URL filter does block on an ordinary individual device, from a
+development-signed app, with Apple's sample data. It does **not** yet show:
+
+- Anything about scale: the sample's Bloom filter and database hold 10 entries.
+- Other browsers or in-app web views.
+- What the user sees in Settings to turn it off, or whether that needs the
+  passcode. Turning it off from the app needed none.
+- Behaviour with the server unreachable (fail-open vs `shouldFailClosed`).
+- Distribution: App Store or TestFlight signing for `url-filter-provider`.

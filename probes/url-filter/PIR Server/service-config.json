@@ -8,7 +8,7 @@
     {
       "fileStem": "url",
       "shardCount": 1,
-      "name": "com.samuelcolacchia.freedomfrom.urlfilterprobe.extension.url.filtering"
+      "name": "com.samuelcolacchia.freedomfrom.urlfilterprobe.url.filtering"
     }
   ]
 }
