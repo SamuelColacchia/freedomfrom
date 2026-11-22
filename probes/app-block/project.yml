@@ -1,0 +1,45 @@
+# The app-block probe: can ManagedSettings block an app by bundle identifier,
+# including one that is not installed yet? A separate project on purpose, like
+# the filter-capacity probe: it shares no target, App Group or store name with
+# FreedomFrom. Built through `scripts/mac probe app-block`.
+
+name: AppBlockProbe
+
+options:
+  deploymentTarget:
+    iOS: "26.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 6989TSP54U
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1,2"
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  AppBlockProbe:
+    type: application
+    platform: iOS
+    sources:
+      - path: AppBlockProbe
+        excludes: ["*.entitlements"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samuelcolacchia.freedomfrom.appblockprobe
+        PRODUCT_NAME: AppBlockProbe
+        CODE_SIGN_ENTITLEMENTS: AppBlockProbe/AppBlockProbe.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: App Block Probe
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+
+schemes:
+  AppBlockProbe:
+    build:
+      targets:
+        AppBlockProbe: all
+    archive:
+      config: Release
