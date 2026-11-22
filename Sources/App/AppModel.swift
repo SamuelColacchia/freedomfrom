@@ -2,7 +2,9 @@ import FamilyControls
 import Foundation
 import FreedomFromKit
 import FreedomFromPlatform
+import LocalAuthentication
 import Observation
+import SwiftUI
 
 /// Everything the app knows, which is the record plus whatever this launch has
 /// been able to observe about the device.
@@ -17,12 +19,22 @@ final class AppModel {
     enum Destination {
         case firstRun
         case targets
-        case countdown
+        case running
         case ended
     }
 
     private(set) var record = Record.empty
-    private(set) var coverage = Coverage(resolved: 0, named: 0)
+    /// What each running commitment is enforcing now, by commitment.
+    private(set) var coverages: [UUID: Coverage] = [:]
+
+    /// The stack over the running list, held here so a new commitment made
+    /// from it can return to the list once it lands.
+    var runningPath = NavigationPath()
+
+    /// Whether this session has passed Face ID or the device passcode, and so
+    /// may see what commitments block. Dropped every time the app backgrounds
+    /// (ADR 0012).
+    private(set) var contentsRevealed = false
 
     /// The apps chosen in *this* session, and nowhere else. Never restored from
     /// the record: hardware check S3 came back red, so a stored selection does
@@ -53,7 +65,7 @@ final class AppModel {
     private var reconciler: Reconciler { Reconciler(log: log) }
 
     var destination: Destination {
-        if record.active != nil { return .countdown }
+        if !record.commitments.isEmpty { return .running }
         if !record.hasSeenFirstRun { return .firstRun }
         if record.endedScreenPending { return .ended }
         return .targets
@@ -61,19 +73,31 @@ final class AppModel {
 
     var draft: Draft { record.draft }
 
-    /// The count the countdown states: app targets that still resolve, plus
-    /// typed domains, which always do. This is the substitute for every message
-    /// the app refuses to show, so it counts what is actually enforced rather
-    /// than what was named at commit.
-    var statedCoverage: Coverage {
-        let domains = record.active?.domains.count ?? 0
-        return Coverage(resolved: coverage.resolved + domains, named: coverage.named + domains)
+    /// Running commitments, nearest deadline first, then in the order made.
+    var running: [Commitment] {
+        record.commitments.enumerated()
+            .sorted { ($0.element.deadline, $0.offset) < ($1.element.deadline, $1.offset) }
+            .map(\.element)
+    }
+
+    /// The count a running commitment states: app targets that still resolve,
+    /// plus typed domains, which always do. This is the substitute for every
+    /// message the app refuses to show, so it counts what is actually enforced
+    /// rather than what was named at commit.
+    func statedCoverage(of commitment: Commitment) -> Coverage {
+        let apps = coverages[commitment.id] ?? Coverage(resolved: 0, named: 0)
+        let domains = commitment.domains.count
+        return Coverage(resolved: apps.resolved + domains, named: apps.named + domains)
     }
 
     /// The two halves of a target set live apart now — apps in this session,
     /// domains in the draft — so the question of whether there is anything to
     /// commit to is asked here, where both are in view.
     var canCommit: Bool { !chosen.isEmpty || !record.draft.domains.isEmpty }
+
+    /// Whether the draft's domains, beside everything already held, would
+    /// cross the filter's budget. Over it, iOS filters nothing at all (#80).
+    var exceedsDomainBudget: Bool { record.exceedsDomainBudget(adding: record.draft.domains) }
 
     // MARK: - Launch and foreground
 
@@ -126,7 +150,7 @@ final class AppModel {
 
         apply(await offMainActor(brokenObserved: reinstalled || lost))
 
-        guard record.active != nil, !Self.isAuthorized else { return }
+        guard !record.commitments.isEmpty, !Self.isAuthorized else { return }
         let lostSinceRequest = await requestAuthorization()
         if Self.isAuthorized || lostSinceRequest {
             apply(await offMainActor(brokenObserved: lostSinceRequest))
@@ -170,10 +194,10 @@ final class AppModel {
         // record; the picker is the only thing that moves the selection.
         case .idle(let record), .released(let record):
             self.record = record
-            coverage = Coverage(resolved: 0, named: 0)
-        case .running(let record, let coverage):
+            coverages = [:]
+        case .running(let record, let coverages):
             self.record = record
-            self.coverage = coverage
+            self.coverages = coverages
         }
     }
 
@@ -254,19 +278,23 @@ final class AppModel {
     // MARK: - Commit
 
     func commit(_ length: CommitmentLength) async {
-        let now = Date()
         let handles = TargetHandles.mint(from: selection)
         let domains = record.draft.domains
-        guard !handles.isEmpty || !domains.isEmpty else { return }
+        guard !handles.isEmpty || !domains.isEmpty, !exceedsDomainBudget else { return }
 
         // Enforcement is a precondition for a commitment existing, and
         // authorization is the only part of it the app can read back. Without
-        // it nothing is written and the app re-requests rather than reporting
-        // an error (ADR 0005).
-        guard Self.isAuthorized else {
+        // it the app re-requests rather than reporting an error (ADR 0005),
+        // and writes nothing unless the request is granted. Granted, the hold
+        // already given is the confirmation, so the commitment goes ahead
+        // instead of asking for a second one.
+        if !Self.isAuthorized {
             await requestAuthorization()
-            return
+            guard Self.isAuthorized else { return }
         }
+
+        // Read after any prompt, so its time is not taken out of the commitment.
+        let now = Date()
 
         var committed = record
         committed.draft.length = length
@@ -292,10 +320,11 @@ final class AppModel {
         guard written else { return }
 
         record = toWrite
-        // Nothing is enforced yet, and the countdown states coverage rather
-        // than what was named (ADR 0005). Zero is the true answer for the
+        // Back to the running list, which now holds this one too.
+        runningPath = NavigationPath()
+        // Nothing new is enforced yet, and the list states coverage rather
+        // than what was named (ADR 0005). No entry reads as zero for the
         // moment it is on screen, and it corrects upward when the shield lands.
-        coverage = Coverage(resolved: 0, named: 0)
 
         // Enforcement follows, behind a countdown that is already drawn. Waiting
         // for it before routing is what put a hold that *had* fired behind a
@@ -313,6 +342,62 @@ final class AppModel {
         persist()
     }
 
+    // MARK: - Unlocking early (ADR 0012)
+
+    /// Ends one commitment early if `code` is the unlock code. Reports whether
+    /// it did; a wrong code changes nothing.
+    func unlock(_ id: UUID, code: String) async -> Bool {
+        let reconciler = reconciler
+        guard
+            let state = await Task.detached(priority: .userInitiated, operation: {
+                reconciler.unlock(id, code: code)
+            }).value
+        else { return false }
+        apply(state)
+        // Back to the list: the commitment that was open is gone.
+        runningPath = NavigationPath()
+        return true
+    }
+
+    /// Sets or changes the unlock code. Refused while anything runs, or when a
+    /// code is set and `current` is not it.
+    func setUnlockCode(_ new: String, current: String?) -> Bool {
+        guard record.setUnlockCode(new, current: current) else { return false }
+        persist()
+        return true
+    }
+
+    func removeUnlockCode(current: String) -> Bool {
+        guard record.removeUnlockCode(current: current) else { return false }
+        persist()
+        return true
+    }
+
+    // MARK: - Seeing what commitments block (ADR 0012)
+
+    /// Asks for Face ID or the device passcode, and reveals contents for this
+    /// session if it passes. A device with no passcode at all has nothing to
+    /// ask for, so it reveals: the phone itself is already open to whoever
+    /// holds it.
+    func revealContents() async {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            if (error as? LAError)?.code == .passcodeNotSet { contentsRevealed = true }
+            return
+        }
+        do {
+            contentsRevealed = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication, localizedReason: "Show what your commitments block.")
+        } catch {
+            // Cancelled or failed: stay hidden, and say nothing (ADR 0003).
+        }
+    }
+
+    func hideContents() {
+        contentsRevealed = false
+    }
+
     #if HARDWARE_PASS
         /// Brings the deadline forward to now, so the ordinary release path
         /// runs. Compiled only into a build that asked for it.
@@ -328,10 +413,10 @@ final class AppModel {
         /// run. A release reached by a different path would prove nothing about
         /// the one that ships.
         func releaseForHardwarePass() async {
-            guard let active = record.active else { return }
+            guard !record.commitments.isEmpty else { return }
 
             var shortened = record
-            shortened.begin(
+            shortened.commitments = record.commitments.map { active in
                 Commitment(
                     id: active.id,
                     startedAt: active.startedAt,
@@ -341,7 +426,8 @@ final class AppModel {
                     domains: active.domains,
                     isDegraded: active.isDegraded,
                     isBroken: active.isBroken
-                ))
+                )
+            }
 
             // Named in the log so a capture shows the run was not clean.
             log.storeMutation("hardware-pass release", landed: true)

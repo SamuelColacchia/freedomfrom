@@ -7,7 +7,7 @@ An iOS app that blocks chosen apps and websites for a fixed span of time which t
 ### The core object
 
 **Commitment**:
-A block of a chosen set of targets, running until a fixed deadline, which the app will not lift early. A commitment belongs to one device — the same person on a phone and a tablet makes two, independently.
+A block of a chosen set of targets, running until a fixed deadline, which the app will not lift early except by the unlock code. Several can run at once, each with its own targets and deadline; a target stays blocked while any of them names it. A commitment belongs to one device — the same person on a phone and a tablet makes two, independently (ADR 0012).
 _Avoid_: session, block, lock, timer
 
 **Target**:
@@ -67,6 +67,14 @@ _Avoid_: restore, resume, reactivate
 **Release**:
 The app lifting a commitment's enforcement and restrictions because its deadline has passed. The counterpart to a break, which happens before the deadline. A release can arrive late — after the deadline, whenever something next runs to notice — but never early.
 _Avoid_: unlock, unblock, expire, end
+
+**Unlock code**:
+One app-owned code that ends any single running commitment before its deadline. It is meant to be held by someone other than the owner, can change only while nothing runs, and is not the Screen Time passcode, which the app cannot read (ADR 0012).
+_Avoid_: password, PIN, Screen Time passcode
+
+**Unlock**:
+Ending one commitment early with the unlock code. The others keep running, and the history records it as unlocked. Unlike a break, it ends the commitment.
+_Avoid_: release, cancel, quit
 
 ### Getting out
 

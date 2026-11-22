@@ -23,6 +23,7 @@ struct TargetsView: View {
     private enum Spur: Hashable {
         case commit
         case history
+        case settings
     }
 
     var body: some View {
@@ -30,7 +31,7 @@ struct TargetsView: View {
             Spacer()
 
             VStack(spacing: 10) {
-                Text("\(model.chosen.picked)")
+                Text("\(model.chosen.picked + model.draft.domains.count)")
                     .font(.system(size: 64, weight: .ultraLight))
                     .foregroundStyle(Quiet.ink)
                 Text(chosenWords)
@@ -86,6 +87,12 @@ struct TargetsView: View {
             QuietButton(title: "Choose apps") { pickerShown = true }
                 .padding(.bottom, 10)
 
+            if model.exceedsDomainBudget {
+                Text("Websites across everything running are limited to \(Record.domainBudget).")
+                    .whisper()
+                    .padding(.bottom, 10)
+            }
+
             NavigationLink(value: Spur.commit) {
                 Text("Next")
                     .font(.system(size: 15, weight: .light))
@@ -95,8 +102,16 @@ struct TargetsView: View {
                     .padding(.vertical, 17)
                     .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
             }
-            .disabled(!model.canCommit)
-            .opacity(model.canCommit ? 1 : 0.25)
+            .disabled(!model.canCommit || model.exceedsDomainBudget)
+            .opacity(model.canCommit && !model.exceedsDomainBudget ? 1 : 0.25)
+
+            NavigationLink(value: Spur.settings) {
+                Text("settings")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundStyle(Quiet.link)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
+            }
 
             // Absent when there is no history rather than present and empty:
             // absence reads as absence (ADR 0007).
@@ -104,7 +119,7 @@ struct TargetsView: View {
                 NavigationLink(value: Spur.history) {
                     Text("what you have committed to before")
                         .font(.system(size: 12, weight: .light))
-                        .foregroundStyle(Quiet.faint)
+                        .foregroundStyle(Quiet.link)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 14)
                 }
@@ -119,16 +134,20 @@ struct TargetsView: View {
             switch spur {
             case .commit: CommitView(model: model)
             case .history: HistoryView(model: model)
+            case .settings: SettingsView(model: model)
             }
         }
     }
 
-    /// "chosen" while the picker returned only apps, and the breakdown the
-    /// moment it returns a category — because the number above drops when a
+    /// "chosen" while only apps are chosen, and the breakdown the moment a
+    /// category or a website joins them — because the number above drops when a
     /// whole category replaces the apps in it, and a bare "chosen" beside a
     /// smaller number reads as having lost something rather than blocked more.
+    /// A typed website counts too, so a list of websites alone is not "0".
     private var chosenWords: String {
-        model.chosen.categories == 0 ? "chosen" : model.chosen.words
+        let domains = model.draft.domains.count
+        return model.chosen.categories == 0 && domains == 0
+            ? "chosen" : model.chosen.words(alsoDomains: domains)
     }
 
     private var placeholder: Text {
@@ -152,7 +171,7 @@ struct TargetsView: View {
                     } label: {
                         Text("remove")
                             .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(Quiet.faint)
+                            .foregroundStyle(Quiet.link)
                     }
                     .buttonStyle(.plain)
                 }

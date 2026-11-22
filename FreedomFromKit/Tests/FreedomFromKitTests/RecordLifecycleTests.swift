@@ -41,9 +41,9 @@ struct DraftTests {
     func survivesBetweenCommitments() {
         var record = Record(draft: draft)
         record.begin(commitment())
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
-        #expect(record.active == nil)
+        #expect(record.commitments.isEmpty)
         #expect(record.draft == draft)
     }
 
@@ -55,8 +55,8 @@ struct DraftTests {
         // Nothing between here and the next launch touches it: no commit, no
         // release, and no reconciliation reaches the draft.
         record.begin(commitment())
-        record.apply(Coverage(resolved: 0, named: 1))
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.apply(Coverage(resolved: 0, named: 1), to: record.commitments[0].id)
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
         #expect(record.draft.domains.map(\.host) == ["example.com", "later.com"])
     }
@@ -65,7 +65,7 @@ struct DraftTests {
     func cleanSlate() {
         var record = Record(draft: draft, hasSeenFirstRun: true)
         record.begin(commitment())
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
         record.cleanSlate()
 
@@ -99,7 +99,7 @@ struct OutcomeTests {
         // must not invent any (ADR 0005).
         var record = Record()
         record.begin(commitment())
-        record.release(at: epoch.addingTimeInterval(365 * 86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(365 * 86_400))
 
         #expect(record.history.first?.outcome == .completed)
     }
@@ -110,7 +110,7 @@ struct OutcomeTests {
         let domains = [WebDomain.canonicalize("example.com")!]
         record.begin(
             commitment(handles: [TargetHandle("a"), TargetHandle("b")], domains: domains))
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
         let row = try #require(record.history.first)
         #expect(row.namedTargetCount == 2)
@@ -123,7 +123,7 @@ struct OutcomeTests {
     func endedIsPending() {
         var record = Record()
         record.begin(commitment())
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
         #expect(record.endedScreenPending)
     }
 }
@@ -140,7 +140,7 @@ struct BreakTests {
 
         #expect(first)
         #expect(second == false)
-        #expect(record.active?.isBroken == true)
+        #expect(record.commitments.first?.isBroken == true)
     }
 
     @Test("it does not shorten the deadline")
@@ -149,8 +149,8 @@ struct BreakTests {
         record.begin(commitment())
         record.markBroken()
 
-        #expect(record.active?.deadline == epoch.addingTimeInterval(86_400))
-        #expect(record.active != nil)
+        #expect(record.commitments.first?.deadline == epoch.addingTimeInterval(86_400))
+        #expect(!record.commitments.isEmpty)
     }
 
     @Test("a broken commitment files as broken")
@@ -158,7 +158,7 @@ struct BreakTests {
         var record = Record()
         record.begin(commitment())
         record.markBroken()
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
         #expect(record.history.first?.outcome == .broken)
     }
@@ -178,10 +178,10 @@ struct DegradationTests {
         var record = Record()
         record.begin(commitment(handles: [TargetHandle("a"), TargetHandle("b")]))
 
-        let degraded = record.apply(Coverage(resolved: 2, named: 2))
+        let degraded = record.apply(Coverage(resolved: 2, named: 2), to: record.commitments[0].id)
 
         #expect(degraded == false)
-        #expect(record.active?.isDegraded == false)
+        #expect(record.commitments.first?.isDegraded == false)
     }
 
     @Test("a missing handle marks degraded and leaves the deadline alone")
@@ -189,11 +189,11 @@ struct DegradationTests {
         var record = Record()
         record.begin(commitment(handles: [TargetHandle("a"), TargetHandle("b")]))
 
-        let degraded = record.apply(Coverage(resolved: 1, named: 2))
+        let degraded = record.apply(Coverage(resolved: 1, named: 2), to: record.commitments[0].id)
 
         #expect(degraded)
-        #expect(record.active?.isDegraded == true)
-        #expect(record.active?.deadline == epoch.addingTimeInterval(86_400))
+        #expect(record.commitments.first?.isDegraded == true)
+        #expect(record.commitments.first?.deadline == epoch.addingTimeInterval(86_400))
     }
 
     @Test("the mark is recorded once")
@@ -201,8 +201,8 @@ struct DegradationTests {
         var record = Record()
         record.begin(commitment(handles: [TargetHandle("a"), TargetHandle("b")]))
 
-        let first = record.apply(Coverage(resolved: 1, named: 2))
-        let second = record.apply(Coverage(resolved: 1, named: 2))
+        let first = record.apply(Coverage(resolved: 1, named: 2), to: record.commitments[0].id)
+        let second = record.apply(Coverage(resolved: 1, named: 2), to: record.commitments[0].id)
 
         #expect(first)
         #expect(second == false)
@@ -212,11 +212,11 @@ struct DegradationTests {
     func degradedNeverClears() {
         var record = Record()
         record.begin(commitment(handles: [TargetHandle("a"), TargetHandle("b")]))
-        record.apply(Coverage(resolved: 1, named: 2))
+        record.apply(Coverage(resolved: 1, named: 2), to: record.commitments[0].id)
 
-        record.apply(Coverage(resolved: 2, named: 2))
+        record.apply(Coverage(resolved: 2, named: 2), to: record.commitments[0].id)
 
-        #expect(record.active?.isDegraded == true)
+        #expect(record.commitments.first?.isDegraded == true)
     }
 
     @Test("a web-only commitment has full coverage and can never degrade")
@@ -225,19 +225,19 @@ struct DegradationTests {
         record.begin(
             commitment(handles: [], domains: [WebDomain.canonicalize("example.com")!]))
 
-        let degraded = record.apply(Coverage(resolved: 0, named: 0))
+        let degraded = record.apply(Coverage(resolved: 0, named: 0), to: record.commitments[0].id)
 
         #expect(degraded == false)
-        #expect(record.active?.isDegraded == false)
+        #expect(record.commitments.first?.isDegraded == false)
     }
 
     @Test("degraded and broken can both be true, and the row reads broken")
     func bothMarks() {
         var record = Record()
         record.begin(commitment(handles: [TargetHandle("a"), TargetHandle("b")]))
-        record.apply(Coverage(resolved: 1, named: 2))
+        record.apply(Coverage(resolved: 1, named: 2), to: record.commitments[0].id)
         record.markBroken()
-        record.release(at: epoch.addingTimeInterval(86_400))
+        record.releaseDue(at: epoch.addingTimeInterval(86_400))
 
         #expect(record.history.first?.outcome == .broken)
     }

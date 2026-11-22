@@ -56,6 +56,11 @@ class ShieldConfigExtension: ShieldConfigurationDataSource {
 
     /// Reads the mirror, not the Keychain.
     ///
+    /// With several commitments running the mirror holds the furthest
+    /// deadline, so the countdown here can overstate how long a target from a
+    /// shorter commitment stays shielded — a wrong number, never an early
+    /// release (ADR 0012).
+    ///
     /// Hardware check S1 came back red for this process alone: `SecItem`
     /// returns `errSecNotAvailable` for both reads and writes here, under the
     /// same access-group entitlement the app and the Monitor use successfully.

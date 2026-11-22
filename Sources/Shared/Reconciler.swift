@@ -21,8 +21,10 @@ struct Reconciler: Sendable {
         /// from "the access group does not work at all".
         case unreadable
         case idle(Record)
+        /// The last running commitment went, and everything was lifted.
         case released(Record)
-        case running(Record, Coverage)
+        /// At least one commitment still runs. Coverage is per commitment.
+        case running(Record, [UUID: Coverage])
     }
 
     let log: Log
@@ -67,7 +69,8 @@ struct Reconciler: Sendable {
         let stored: Record?
         do {
             stored = try store.read()
-            log.recordRead(found: stored != nil, hasActiveCommitment: stored?.active != nil)
+            log.recordRead(
+                found: stored != nil, hasActiveCommitment: !(stored?.commitments.isEmpty ?? true))
         } catch {
             log.recordUnreadable(status: Self.osStatus(error))
             return .unreadable
@@ -77,48 +80,90 @@ struct Reconciler: Sendable {
         var record = original
         if brokenObserved, record.markBroken() { log.marked(.broken) }
 
-        guard let active = record.active else {
+        guard !record.commitments.isEmpty else {
             persist(record, ifChangedFrom: original)
             return .idle(record)
         }
-        log.deadline(active.deadline)
+        record.commitments.forEach { log.deadline($0.deadline) }
 
-        if Reconciliation.shouldRelease(deadline: active.deadline, now: now) {
+        for released in record.releaseDue(at: now) {
+            log.released(lateBy: Reconciliation.lateness(deadline: released.deadline, now: now))
+        }
+
+        return settle(&record, from: original)
+    }
+
+    /// Ends one commitment early with the unlock code, in the same
+    /// read-modify-write as the enforcement that follows, so the record and
+    /// the store cannot disagree about which commitments run (ADR 0012).
+    ///
+    /// `nil` when the code is wrong or the commitment is already gone, and
+    /// nothing has changed.
+    func unlock(_ id: UUID, code: String) -> State? {
+        let original: Record
+        do {
+            guard let stored = try store.read() else { return nil }
+            original = stored
+        } catch {
+            log.recordUnreadable(status: Self.osStatus(error))
+            return nil
+        }
+
+        var record = original
+        guard record.unlock(id, code: code) else { return nil }
+        log.unlocked()
+        return settle(&record, from: original)
+    }
+
+    /// Lifts everything when nothing runs any more, or reapplies what still
+    /// does, then persists.
+    private func settle(_ record: inout Record, from original: Record) -> State {
+        guard !record.commitments.isEmpty else {
             Enforcement.releaseEverything()
             log.storeMutation("release", landed: true)
-            log.released(lateBy: Reconciliation.lateness(deadline: active.deadline, now: now))
-
-            record.release(at: now)
             persist(record, ifChangedFrom: original)
             return .released(record)
         }
 
-        let coverage = reArm(active, in: &record)
+        let coverage = reArm(in: &record)
         persist(record, ifChangedFrom: original)
         return .running(record, coverage)
     }
 
-    /// Recompute coverage, apply what resolves, mark degraded if anything does
-    /// not, and re-register the window from wherever the deadline now sits.
-    private func reArm(_ active: Commitment, in record: inout Record) -> Coverage {
-        let selection = TargetHandles.decode(active.encodedSelection)
-        let resolved = selection.map(TargetHandles.mint) ?? []
-        let coverage = Reconciliation.coverage(named: active.namedHandles, resolved: resolved)
-        log.coverage(coverage)
+    /// Recompute each commitment's coverage, apply the union of what resolves,
+    /// mark degraded only the commitments that lost something, and register
+    /// the window toward the nearest deadline.
+    private func reArm(in record: inout Record) -> [UUID: Coverage] {
+        var coverages: [UUID: Coverage] = [:]
+        var selections: [FamilyActivitySelection] = []
+        for commitment in record.commitments {
+            let selection = TargetHandles.decode(commitment.encodedSelection)
+            let resolved = selection.map(TargetHandles.mint) ?? []
+            let coverage = Reconciliation.coverage(named: commitment.namedHandles, resolved: resolved)
+            log.coverage(coverage)
+            if record.apply(coverage, to: commitment.id) { log.marked(.degraded) }
+            coverages[commitment.id] = coverage
+            if let selection { selections.append(selection) }
+        }
 
-        if record.apply(coverage) { log.marked(.degraded) }
-
-        Enforcement.apply(selection: selection, domains: active.domains)
-        log.storeMutation("enforcement", landed: true)
-
+        // Before the store, and holding the *furthest* deadline: `ShieldConfig`
+        // releases everything once the mirror has passed, so a mirror naming an
+        // earlier commitment would lift a later one early. A mirror that cannot
+        // be written is removed rather than left stale, for the same reason.
         do {
-            try DeadlineMirror().write(active.deadline)
+            try DeadlineMirror().write(record.latestDeadline ?? Date())
             log.storeMutation("deadline mirror", landed: true)
         } catch {
+            DeadlineMirror().remove()
             log.storeMutation("deadline mirror", landed: false)
         }
 
-        if let window = Reconciliation.nextWindow(deadline: active.deadline, now: Date()) {
+        Enforcement.apply(selections: selections, domains: record.heldDomains)
+        log.storeMutation("enforcement", landed: true)
+
+        if let earliest = record.earliestDeadline,
+            let window = Reconciliation.nextWindow(deadline: earliest, now: Date())
+        {
             // A window always exists while a commitment runs — `nextWindow`
             // returns nil only once the deadline has passed, and that path
             // released above — so this is asked on every reconciliation of a
@@ -135,7 +180,7 @@ struct Reconciler: Sendable {
                 // Walk windows stay, because they re-register rather than release.
                 if window.kind == .final {
                     log.windowSuppressed("hardware-pass build, so S2 is not a race")
-                    return coverage
+                    return coverages
                 }
             #endif
             do {
@@ -160,7 +205,7 @@ struct Reconciler: Sendable {
                 if seen.isEvidenceOfABreak, record.markBroken() { log.marked(.broken) }
             }
         }
-        return coverage
+        return coverages
     }
 
     /// Whether `DeviceActivity` refused because authorization is gone, as
