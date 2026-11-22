@@ -139,3 +139,22 @@ What this shows, on this device and iOS only:
 
 Still open: other browsers and in-app web views, how long cached answers last,
 the Settings path to turn the filter off, and distribution signing.
+
+## Probe 3, 2026-11-22: going live, a public server, and the on-device idea
+
+Apple's production rules are in `docs/research/url-filter-production-requirements.md`;
+the server is described in `server/README.md`.
+
+| Check | Observed |
+|---|---|
+| Enable with the server down, Fail Closed on | "Stopped", `NEURLFilterManager.Error` 9. Browsing then failed for **every** site, listed (`bain.com`, `tailwindcss.com`) and unlisted (`dexcom.com`, `noticiasaominuto.com`) alike, until the filter was disabled. A filter that cannot reach its server at setup is a total lockout with Fail Closed, not a lighter blocklist. |
+| Public server, `https://service.freedomfrom.app` (DigitalOcean, Caddy, HTTP/2, Let's Encrypt), new random token, Fail Closed off | "Running"; the server served `/config`, `/key` and the issuer endpoints over HTTPS. 6/6 listed sites never looked up before were blocked, with 7 `/queries` on the server; controls loaded (`marmiton.org`, `healow.com`; `stay22.com` unobserved mid-load, loaded on retry). Rows: `results/20261122/safari-public-server.tsv`. |
+| Server time per lookup on the 1-vCPU Droplet | 62-99 ms, against 21 ms median on the PC |
+
+**A server on the device is not a production option.** Every production lookup
+goes through Apple's relay to an operator-run gateway, and an iOS app cannot
+keep a listener alive while other apps browse. The serverless variant, Fail
+Closed with no server, blocks the whole web as shown above.
+
+The iPad here was on the same home network as before, so this shows the filter
+working through a public server, not yet on cellular or another network.

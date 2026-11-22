@@ -1,0 +1,26 @@
+services:
+  pir:
+    image: freedomfrom-pir:${PIR_TAG:-latest}
+    restart: unless-stopped
+    volumes:
+      - ./service-config.json:/pir/service-config.json:ro
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: [tls]
+    depends_on: [pir]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

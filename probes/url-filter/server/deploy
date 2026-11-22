@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Ships the locally built PIR image and this directory to the server, then
+# starts it. The image is built here, not on the server: compiling the Swift
+# service needs more memory than the 1 GB Droplet has.
+#
+#   probes/url-filter/server/deploy HOST [--tls]
+#
+# HOST is an ssh destination (root@IP). The user bearer token comes from
+# $FREEDOMFROM_PIR_TOKEN_FILE (default ~/.config/freedomfrom/pir-token) and
+# never enters the repo. --tls also starts Caddy for service.freedomfrom.app,
+# which needs that name's DNS pointing at HOST first.
+set -euo pipefail
+
+host=${1:?usage: deploy HOST [--tls]}
+tls=${2:-}
+here=$(cd "$(dirname "$0")" && pwd)
+docker=${DOCKER:-docker}
+token_file=${FREEDOMFROM_PIR_TOKEN_FILE:-$HOME/.config/freedomfrom/pir-token}
+key=${FREEDOMFROM_SSH_KEY:-$HOME/.ssh/freedomfrom_ed25519}
+# One multiplexed connection for every step: a burst of fresh ssh connections
+# got port 22 dropped part-way through a deploy.
+mux=(-o ControlMaster=auto -o ControlPath="$HOME/.ssh/cm-freedomfrom-%C" -o ControlPersist=60)
+ssh=(ssh -i "$key" -o StrictHostKeyChecking=accept-new "${mux[@]}" "$host")
+tag=$(date -u +%Y%m%d%H%M)
+
+[[ -s "$token_file" ]] || { echo "no token in $token_file" >&2; exit 2; }
+
+# The context goes in on stdin, so Docker Desktop's CLI works from WSL too.
+tar -C "$here/../PIR Server" -c . | "$docker" build -q -t "freedomfrom-pir:$tag" - >/dev/null
+"$docker" save "freedomfrom-pir:$tag" | gzip | "${ssh[@]}" 'gunzip | docker load'
+
+"${ssh[@]}" mkdir -p /opt/freedomfrom
+scp -q -i "$key" "${mux[@]}" "$here/compose.yaml" "$here/Caddyfile" "$host:/opt/freedomfrom/"
+jq --arg t "$(cat "$token_file")" '.tokens = [$t]' "$here/../PIR Server/service-config.json" \
+  | "${ssh[@]}" 'umask 077; cat > /opt/freedomfrom/service-config.json'
+
+profile=()
+[[ "$tls" == --tls ]] && profile=(--profile tls)
+"${ssh[@]}" "cd /opt/freedomfrom && PIR_TAG=$tag docker compose ${profile[*]} up -d --remove-orphans && docker compose ps"
