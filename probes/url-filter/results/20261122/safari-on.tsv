@@ -1,0 +1,35 @@
+# started=2026-11-22T10:51:09Z
+# finished=2026-11-22T10:54:47Z
+host	kind	verdict	address	title_or_code
+tailwindcss.com	listed	blocked	tailwindcss.com	Can’t Open Page
+ko-fi.com	listed	blocked	ko-fi.com	Can’t Open Page
+lua.org	listed	blocked	lua.org	Can’t Open Page
+gnupg.org	listed	blocked	gnupg.org	Can’t Open Page
+screenrant.com	listed	blocked	screenrant.com	Can’t Open Page
+photobucket.com	listed	blocked	photobucket.com	Can’t Open Page
+getcomposer.org	listed	blocked	getcomposer.org	Can’t Open Page
+colorlib.com	listed	blocked	colorlib.com	Can’t Open Page
+nbc.com	listed	blocked	nbc.com	Can’t Open Page
+greenpeace.org	listed	blocked	greenpeace.org	Can’t Open Page
+instructables.com	listed	blocked	instructables.com	Can’t Open Page
+unl.edu	listed	blocked	unl.edu	Can’t Open Page
+wolfram.com	listed	blocked	wolfram.com	Can’t Open Page
+macrumors.com	listed	blocked	macrumors.com	Can’t Open Page
+sephora.com	listed	blocked	sephora.com	Can’t Open Page
+dhs.gov	listed	blocked	dhs.gov	Can’t Open Page
+sfchronicle.com	listed	blocked	sfchronicle.com	Can’t Open Page
+architecturaldigest.com	listed	blocked	architecturaldige...	Can’t Open Page
+royalcaribbean.com	listed	blocked	royalcaribbean.com	Can’t Open Page
+reference.com	listed	blocked	reference.com	Can’t Open Page
+www.macrumors.com	listed-www	blocked	macrumors.com	Can’t Open Page
+www.wolfram.com	listed-www	blocked	wolfram.com	Can’t Open Page
+marvel.com	control	loaded	marvel.com	Marvel.com | The O...
+wri.org	control	loaded	wri.org	World Resources In...
+bc.edu	control	loaded	bc.edu	Home - Boston Coll...
+finra.org	control	loaded	finra.org	A vibrant market i...
+healthcare.gov	control	loaded	healthcare.gov	Welcome to the Hea...
+linuxfoundation.org	control	loaded	linuxfoundation.org	Linux Foundation -...
+whatwg.org	control	loaded	whatwg.org	Web Hypertext Appl...
+dexcom.com	control	loaded	dexcom.com	Dexcom Continuous ...
+sleepnumber.com	control	loaded	sleepnumber.com	Mattresses, Beddin...
+wikipedia.org	control	loaded	wikipedia.org	Wikipedia

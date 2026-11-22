@@ -1,0 +1,11 @@
+# started=2026-11-22T11:09:53Z
+# finished=2026-11-22T11:11:05Z
+host	kind	verdict	address	title_or_code
+nbcsports.com	listed-fresh	blocked	nbcsports.com	Can’t Open Page
+premierleague.com	listed-fresh	blocked	premierleague.com	Can’t Open Page
+akakce.com	listed-fresh	blocked	akakce.com	Can’t Open Page
+onthemarket.com	listed-fresh	blocked	onthemarket.com	Can’t Open Page
+marinetraffic.com	listed-fresh	blocked	marinetraffic.com	Can’t Open Page
+bc.edu	control	loaded	bc.edu	Home - Boston Coll...
+linuxfoundation.org	control	loaded	linuxfoundation.org	Linux Foundation -...
+finra.org	control	loaded	finra.org	A vibrant market i...
