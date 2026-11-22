@@ -1,0 +1,3 @@
+service.freedomfrom.app {
+	reverse_proxy pir:8080
+}
