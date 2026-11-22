@@ -1,0 +1,35 @@
+# started=2026-11-22T10:57:30Z
+# finished=2026-11-22T11:05:33Z
+host	kind	verdict	address	title_or_code
+tailwindcss.com	listed	blocked	tailwindcss.com	ERR_INSUFFICIENT_RESOURCES
+ko-fi.com	listed	blocked	ko-fi.com	ERR_INSUFFICIENT_RESOURCES
+lua.org	listed	blocked	lua.org	ERR_INSUFFICIENT_RESOURCES
+gnupg.org	listed	blocked	gnupg.org	ERR_INSUFFICIENT_RESOURCES
+screenrant.com	listed	blocked	screenrant.com	ERR_INSUFFICIENT_RESOURCES
+photobucket.com	listed	blocked	photobucket.com	ERR_INSUFFICIENT_RESOURCES
+getcomposer.org	listed	blocked	getcomposer.org	ERR_INSUFFICIENT_RESOURCES
+colorlib.com	listed	blocked	colorlib.com	ERR_INSUFFICIENT_RESOURCES
+nbc.com	listed	blocked	nbc.com	ERR_INSUFFICIENT_RESOURCES
+greenpeace.org	listed	blocked	greenpeace.org	ERR_INSUFFICIENT_RESOURCES
+instructables.com	listed	blocked	instructables.com	ERR_INSUFFICIENT_RESOURCES
+unl.edu	listed	blocked	unl.edu	ERR_INSUFFICIENT_RESOURCES
+wolfram.com	listed	blocked	wolfram.com	ERR_INSUFFICIENT_RESOURCES
+macrumors.com	listed	blocked	macrumors.com	ERR_INSUFFICIENT_RESOURCES
+sephora.com	listed	blocked	sephora.com	ERR_INSUFFICIENT_RESOURCES
+dhs.gov	listed	blocked	dhs.gov	ERR_INSUFFICIENT_RESOURCES
+sfchronicle.com	listed	blocked	sfchronicle.com	ERR_INSUFFICIENT_RESOURCES
+architecturaldigest.com	listed	blocked	architecturaldiges	ERR_INSUFFICIENT_RESOURCES
+royalcaribbean.com	listed	blocked	royalcaribbean.com	ERR_INSUFFICIENT_RESOURCES
+reference.com	listed	blocked	reference.com	ERR_INSUFFICIENT_RESOURCES
+www.macrumors.com	listed-www	blocked	macrumors.com	ERR_INSUFFICIENT_RESOURCES
+www.wolfram.com	listed-www	blocked	wolfram.com	ERR_INSUFFICIENT_RESOURCES
+marvel.com	control	loaded	marvel.com	
+wri.org	control	loaded	wri.org	
+bc.edu	control	loaded	bc.edu	
+finra.org	control	loaded	finra.org	
+healthcare.gov	control	loaded	healthcare.gov	
+linuxfoundation.org	control	loaded	linuxfoundation.or	
+whatwg.org	control	loaded	whatwg.org	
+dexcom.com	control	loaded	dexcom.com	
+sleepnumber.com	control	loaded	sleepnumber.com	
+wikipedia.org	control	loaded	wikipedia.org	

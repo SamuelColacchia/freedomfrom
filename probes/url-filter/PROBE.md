@@ -95,3 +95,47 @@ development-signed app, with Apple's sample data. It does **not** yet show:
   passcode. Turning it off from the app needed none.
 - Behaviour with the server unreachable (fail-open vs `shouldFailClosed`).
 - Distribution: App Store or TestFlight signing for `url-filter-provider`.
+
+## Probe 2 results, 2026-11-22: 5000 domains, Chrome, server down
+
+Same iPad and setup as probe 1. Row tables are in `results/20261122/`; each
+row was scored from its own UI tree and address, and the trees and screenshots
+stay off the repo because they show the device's own browser tabs.
+
+**The list.** `lists-5000.txt` is Tranco ranks 2001-7155 (list `46YLX`,
+fetched 2026-11-22) with 155 Apple, Google, Microsoft, CDN and tooling hosts
+left out so the device and harness keep working. `make-lists.ts` turns it
+into the extension's Bloom filter and the server's PIR database; its
+`--check` reproduces the sample's shipped filter bit for bit. Controls came
+from ranks 7156-10155, so none is listed.
+
+**Scoring.** Safari's block page reads *"Safari can't open the page because it
+couldn't load any data."* with a **non-breaking space** before "data"; a
+pattern with a plain space scored the first block `failed`, caught on the
+fixture check before any sweep ran. Chrome's is *"This site can't be reached"*
+with `ERR_INSUFFICIENT_RESOURCES`. Each sweep was preceded by a blocked,
+a loaded and a failed fixture scoring correctly.
+
+| Sweep | Rows | Result |
+|---|---|---|
+| `safari-on` | 20 listed, 2 `www.` forms of listed bare domains, 10 controls | 22/22 blocked, 10/10 loaded |
+| `chrome-on` | same 32, typed into Chrome's address bar | 22/22 blocked, 10/10 loaded |
+| `safari-server-down-failopen` | server stopped, `shouldFailClosed` off: 6 listed never looked up, 3 listed looked up earlier, 2 controls | 6/6 never-seen listed **loaded**; 3/3 seen listed blocked; 2/2 controls loaded |
+| `safari-server-down-failclosed` | server stopped, Fail Closed on (read back as `value: 1`): 5 listed never looked up, 3 controls | 5/5 blocked, 3/3 loaded |
+| `safari-off` | filter disabled: every host blocked above | 27/27 loaded, so no block was a network failure |
+
+What this shows, on this device and iOS only:
+
+- 5000 entries filter correctly, with no visible slowdown. Nothing here bounds
+  the ceiling; Apple's documentation speaks of millions.
+- Chrome is covered the same as Safari, with its own error page.
+- A listed bare domain also blocks its `www.` form (2 of 2).
+- With the server unreachable, the default **fails open**: a listed site the
+  device has not asked about before loads. Answers already received are cached
+  and keep blocking. Fail Closed blocks listed sites with the server down, and
+  only sites that hit the Bloom filter need the server at all, so unlisted
+  sites still load.
+- Turning Fail Closed on needed no passcode, only Apply with the server up.
+
+Still open: other browsers and in-app web views, how long cached answers last,
+the Settings path to turn the filter off, and distribution signing.
