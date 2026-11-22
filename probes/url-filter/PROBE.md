@@ -42,10 +42,10 @@ is off), so config changes mean rebuilding the image.
 ## Installing
 
 ```
-FREEDOMFROM_DEVICE=00008132-001C65641E85001C scripts/mac urlprobe
+FREEDOMFROM_DEVICE=00008132-001C65641E85001C scripts/mac probe url-filter
 ```
 
-This archives, signs and installs through macbridge, as `scripts/mac probe` does.
+This archives, signs and installs through macbridge, like the other probes.
 On 2026-11-08 it installed on the iPad (iPadOS 27.0.1) with a development
 profile carrying `url-filter-provider`, without any request to Apple.
 
