@@ -1,0 +1,219 @@
+<!doctype html>
+<!-- PROTOTYPE, throwaway. Three structurally different directions for the
+     running list, unlock and settings screens, switchable with ?variant=A|B|C
+     and the floating bar (or arrow keys). Not product code. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap">
+<title>freedomfrom - UI tighten prototype</title>
+<style>
+  :root{
+    --bg:#0A0A0B; --ink:#EDEDED; --quieted:#8D8D90; --until:#9A9A9E;
+    --whisper:#6F6F72; --line:#313134; --hairline:#1E1F22;
+    --link:#8A8A8E; /* raised from #4D4D51 to clear 4.5:1 */
+    --sf: -apple-system, "SF Pro Display", "Inter", "Helvetica Neue", system-ui, sans-serif;
+  }
+  html,body{margin:0;background:transparent}
+  body{font-family:var(--sf);color:var(--ink);padding:8px}
+  .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .cap{font:500 12px var(--sf);color:#9a9a9e;text-align:center;margin-top:8px;letter-spacing:.3px}
+  .phone{width:390px;height:844px;background:var(--bg);border-radius:46px;position:relative;overflow:hidden;
+         border:1px solid #2a2a2e;box-shadow:0 10px 30px rgba(0,0,0,.35);zoom:.545}
+  .status{height:54px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 6px;font:600 15px var(--sf)}
+  .screen{position:absolute;inset:54px 0 0 0;display:flex;flex-direction:column;padding:10px 28px 34px}
+  .ul{font-weight:200;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .w{color:var(--whisper);font-weight:300;font-size:13px}
+  .link{color:var(--link);font-weight:300;font-size:14px;padding:12px 0;text-align:center}
+  .btn{border:1px solid var(--line);text-align:center;padding:17px 0;font-weight:300;font-size:15px;letter-spacing:1.5px}
+  .hold{border:1px solid var(--line);height:58px;display:flex;align-items:center;justify-content:center;
+        font-weight:300;font-size:14px;letter-spacing:2.5px;text-transform:uppercase;position:relative;overflow:hidden}
+  .hold i{position:absolute;inset:0;right:38%;background:var(--ink)}
+  .hold b{position:relative;font-weight:300;color:#fff;mix-blend-mode:difference}
+  .field{border-bottom:1px solid var(--line);padding:13px 0;color:#55555a;font-weight:300;font-size:16px}
+  .field.on{color:var(--ink)}
+  .icon{width:40px;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;color:var(--quieted)}
+  .chev{color:#55555a;font-size:22px;font-weight:200}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#141416;border-top-left-radius:22px;border-top-right-radius:22px;
+         padding:22px 28px 34px;border-top:1px solid #26262a}
+  .grab{width:38px;height:5px;border-radius:3px;background:#3a3a3e;margin:0 auto 18px}
+  .dim{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+  .section{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--whisper);font-weight:400}
+  .switch{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#fff;color:#111;border-radius:999px;
+          display:flex;align-items:center;gap:14px;padding:8px 14px;font:600 13px system-ui;box-shadow:0 6px 20px rgba(0,0,0,.4);z-index:9}
+  .switch button{border:0;background:#eee;border-radius:999px;width:28px;height:28px;font-size:15px;cursor:pointer}
+  .intro{font:400 13px var(--sf);color:#b9b9bd;max-width:700px;margin:0 auto 14px;line-height:1.5;text-align:center}
+  .intro b{color:#fff}
+  svg{display:block}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="switch" id="sw"><button id="prev">&larr;</button><span id="lbl"></span><button id="next">&rarr;</button></div>
+<script>
+const status = `<div class="status"><span>6:11</span><span>&#9679;&#9679;&#9679; 80%</span></div>`;
+const phone = (inner, cap) => `<div style="width:214px"><div class="phone">${status}${inner}</div><div class="cap">${cap}</div></div>`;
+const gear = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.9 1.9M17.5 17.5l1.9 1.9M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.9-1.9M17.5 6.5l1.9-1.9"/></svg>`;
+const eye = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>`;
+
+/* ---------------- A: Quiet, tightened ---------------- */
+const A = {
+  name: "Quiet, tightened",
+  blurb: "Same one-column voice, but every row is one full-width tap target that opens the commitment. Reveal and settings move to the top corners, the footer shrinks to one button and one line, and forms sit at the top.",
+  screens: () => [
+    phone(`<div class="screen">
+      <div style="display:flex;justify-content:flex-end;gap:4px;margin:-6px -10px 6px 0"><div class="icon">${eye}</div><div class="icon">${gear}</div></div>
+      ${[["00:13:28","until 6:24 PM"],["00:59:36","until 7:10 PM"]].map(([t,u])=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--hairline)">
+          <div><div class="ul" style="font-size:46px">${t}</div>
+          <div class="w" style="margin-top:4px">${u} &middot; contents hidden</div></div>
+          <div class="chev">&rsaquo;</div></div>`).join("")}
+      <div style="flex:1"></div>
+      <div class="btn">Another</div>
+      <div class="link">there is a way out &middot; Settings</div>
+    </div>`, "Running: rows open the commitment"),
+    phone(`<div class="screen">
+      <div style="color:var(--quieted);font-size:17px;margin:-4px 0 0">&lsaquo;</div>
+      <div style="margin-top:40px" class="ul"><span style="font-size:64px">00:13:28</span></div>
+      <div class="w" style="font-size:14px;margin-top:6px">until Fri 13 Nov, 6:24 PM</div>
+      <div style="margin-top:28px;border-top:1px solid var(--hairline)">
+        <div style="padding:14px 0;border-bottom:1px solid var(--hairline);display:flex;justify-content:space-between"><span style="font-weight:300">1 website</span><span class="w">1 of 1 covered</span></div>
+        <div style="padding:14px 0;border-bottom:1px solid var(--hairline);font-weight:300;color:var(--until)">reddit.com</div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="dim"></div>
+      <div class="sheet"><div class="grab"></div>
+        <div style="font-size:20px;font-weight:300">Unlock this one early.</div>
+        <div class="w" style="margin-top:10px">It ends now and is written down as unlocked. The others keep running.</div>
+        <div class="field on" style="margin-top:18px">&bull;&bull;&bull;&bull;</div>
+        <div class="hold" style="margin-top:26px"><i></i><b>Hold to unlock</b></div>
+      </div>
+    </div>`, "Unlock: a sheet over the commitment"),
+    phone(`<div class="screen">
+      <div style="display:flex;align-items:center;gap:10px;margin:-4px 0 26px"><span style="color:var(--quieted);font-size:17px">&lsaquo;</span><span style="font-weight:400;font-size:17px;flex:1;text-align:center;margin-right:14px">Settings</span></div>
+      <div class="section">Early unlock code</div>
+      <div style="font-size:20px;font-weight:300;margin-top:12px">No unlock code is set.</div>
+      <div class="w" style="margin-top:8px;line-height:1.5">One code unlocks any single commitment early. Give it to someone you trust.</div>
+      <div class="field" style="margin-top:14px">new code</div>
+      <div class="field">new code again</div>
+      <div class="btn" style="margin-top:22px">Set code</div>
+      <div style="flex:1"></div>
+    </div>`, "Settings: top-aligned, button under fields"),
+  ]
+};
+
+/* ---------------- B: One in focus ---------------- */
+const ring = (frac, size=250) => { const r=size/2-6, c=2*Math.PI*r;
+  return `<svg width="${size}" height="${size}" style="position:absolute;inset:0"><circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="#1E1F22" stroke-width="2" fill="none"/>
+  <circle cx="${size/2}" cy="${size/2}" r="${r}" stroke="#EDEDED" stroke-width="2" fill="none" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-frac)}" transform="rotate(-90 ${size/2} ${size/2})" stroke-linecap="round"/></svg>`; };
+const pad = () => `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 26px;margin-top:22px;justify-items:center">
+  ${["1","2","3","4","5","6","7","8","9","","0","&#9003;"].map(k=>`<div style="width:72px;height:72px;border-radius:36px;${k&&k!=="&#9003;"?"border:1px solid var(--line);":""}display:flex;align-items:center;justify-content:center;font-weight:200;font-size:30px">${k}</div>`).join("")}</div>`;
+const dots = (n) => `<div style="display:flex;gap:16px;justify-content:center;margin-top:22px">${[0,1,2,3].map(i=>`<div style="width:13px;height:13px;border-radius:7px;${i<n?"background:var(--ink)":"border:1px solid var(--quieted)"}"></div>`).join("")}</div>`;
+const B = {
+  name: "One in focus",
+  blurb: "The nearest deadline is the hero, a big centred countdown inside a ring that fills as it runs. Everything else running sits below as a compact list. Codes use a passcode-style pad, so setting and unlocking feel like the system lock screen.",
+  screens: () => [
+    phone(`<div class="screen" style="align-items:stretch">
+      <div style="display:flex;justify-content:space-between;margin:-6px -10px 0"><div class="icon">${eye}</div><div class="icon">${gear}</div></div>
+      <div style="position:relative;width:250px;height:250px;margin:22px auto 0">${ring(.1)}
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div class="ul" style="font-size:50px">13:28</div><div class="w" style="margin-top:4px">until 6:24 PM</div><div class="w" style="margin-top:2px;color:#55555a">contents hidden</div></div></div>
+      <div class="link" style="padding:4px 0 0">unlock early</div>
+      <div style="margin-top:24px;border-top:1px solid var(--hairline)">
+        <div class="section" style="padding:14px 0 6px">Also running</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--hairline)">
+          <span class="ul" style="font-size:24px">00:59:36</span><span class="w">until 7:10 PM &nbsp;<span class="chev" style="font-size:18px">&rsaquo;</span></span></div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="btn">Another</div>
+      <div class="link">there is a way out. it is in Settings.</div>
+    </div>`, "Running: the nearest one in focus"),
+    phone(`<div class="screen" style="text-align:center">
+      <div style="text-align:left;color:var(--quieted);font-size:15px;font-weight:300">Cancel</div>
+      <div style="font-size:20px;font-weight:300;margin-top:38px">Unlock code</div>
+      <div class="w" style="margin-top:8px">Ends the 6:24 PM commitment. The others keep running.</div>
+      ${dots(3)}${pad()}
+      <div style="flex:1"></div>
+    </div>`, "Unlock: passcode pad, ends on the 4th digit"),
+    phone(`<div class="screen" style="text-align:center">
+      <div style="display:flex;align-items:center"><span style="color:var(--quieted);font-size:17px">&lsaquo;</span><span style="flex:1;font-size:17px;margin-right:10px">Settings</span></div>
+      <div style="margin-top:30px;border:1px solid var(--hairline);border-radius:14px;text-align:left">
+        <div style="display:flex;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--hairline)"><span style="font-weight:300">Early unlock code</span><span class="w">Off</span></div>
+        <div style="padding:14px 18px" class="w">One code unlocks any single commitment early. It can change only while nothing runs.</div></div>
+      <div style="font-size:18px;font-weight:300;margin-top:30px">Choose a code</div>
+      ${dots(0)}${pad()}
+      <div style="flex:1"></div>
+    </div>`, "Settings: the same pad sets the code"),
+  ]
+};
+
+/* ---------------- C: Timeline ---------------- */
+const C = {
+  name: "Timeline",
+  blurb: "Running commitments are drawn as bars down a time axis that starts at now. You see at a glance which ends first and when you are fully free. Tapping a bar expands it in place to show contents and the unlock, with no new screen.",
+  screens: () => {
+    const axis = (expand) => {
+      const H = 520, now=0, span=60, y=m=>Math.round(m/span*H);
+      const bars=[{m:13,t:"13:28",u:"6:24 PM",x:0,c:"reddit.com"},{m:59,t:"59:36",u:"7:10 PM",x:1,c:"youtube.com"}];
+      return `<div style="position:relative;height:${H+30}px;margin-top:14px">
+        ${[0,15,30,45,60].map(m=>`<div style="position:absolute;left:0;right:0;top:${y(m)}px;border-top:1px dashed #1E1F22"></div><div class="w" style="position:absolute;left:0;top:${y(m)-8}px;font-size:11px;background:var(--bg);padding-right:6px">${m===0?"now":"+"+m+"m"}</div>`).join("")}
+        ${bars.map(b=>{const open=expand&&b.x===0;return `<div style="position:absolute;left:${70+b.x*120}px;top:0;width:${open?260:100}px;height:${Math.max(y(b.m),open?250:0)}px;border:1px solid ${open?"var(--ink)":"var(--line)"};background:${open?"#121214":"repeating-linear-gradient(135deg,#141416 0 6px,#0f0f11 6px 12px)"};padding:10px 12px;box-sizing:border-box;${open?"z-index:2":""}">
+          <div class="ul" style="font-size:${open?34:22}px">${b.t}</div><div class="w" style="font-size:12px">ends ${b.u}</div>
+          ${open?`<div style="margin-top:12px;font-weight:300;font-size:14px;color:var(--until)">1 website &middot; reddit.com</div>
+            <div class="field on" style="margin-top:10px;font-size:15px;padding:9px 0">&bull;&bull;&bull;&bull;</div>
+            <div class="hold" style="height:44px;margin-top:14px;font-size:12px"><i></i><b>Hold to unlock</b></div>`:""}</div>`}).join("")}
+      </div>`;
+    };
+    return [
+      phone(`<div class="screen">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:-6px -10px 0 0">
+          <div><div style="font-size:22px;font-weight:300">2 running</div><div class="w">free of all at 7:10 PM</div></div>
+          <div style="display:flex"><div class="icon">${eye}</div><div class="icon">${gear}</div></div></div>
+        ${axis(false)}
+        <div style="flex:1"></div>
+        <div class="btn">Another</div>
+        <div class="link">there is a way out &middot; Settings</div>
+      </div>`, "Running: bars down a time axis"),
+      phone(`<div class="screen">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:-6px -10px 0 0">
+          <div><div style="font-size:22px;font-weight:300">2 running</div><div class="w">free of all at 7:10 PM</div></div>
+          <div style="display:flex"><div class="icon">${eye}</div><div class="icon">${gear}</div></div></div>
+        ${axis(true)}
+      </div>`, "Unlock: the bar expands in place"),
+      phone(`<div class="screen">
+        <div style="display:flex;align-items:center;margin:-4px 0 22px"><span style="color:var(--quieted);font-size:17px">&lsaquo;</span><span style="flex:1;text-align:center;font-size:17px;margin-right:10px">Settings</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-start;padding:16px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)">
+          <div style="width:4px;align-self:stretch;background:var(--line)"></div>
+          <div style="flex:1"><div style="font-weight:300;font-size:17px">Early unlock code</div>
+          <div class="w" style="margin-top:6px;line-height:1.5">Ends one commitment before its deadline. Changeable only while nothing runs.</div>
+          <div class="field" style="margin-top:10px">new code</div><div class="field">new code again</div>
+          <div class="btn" style="margin-top:16px;padding:13px 0">Set code</div></div></div>
+        <div style="display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--hairline);opacity:.55">
+          <div style="width:4px;background:var(--hairline)"></div><div><div style="font-weight:300;font-size:17px">Clean slate</div><div class="w" style="margin-top:6px">Erase history and the draft. Lives in History.</div></div></div>
+        <div style="flex:1"></div>
+      </div>`, "Settings: sections with a rail, room to grow"),
+    ];
+  }
+};
+
+const V = {A, B, C};
+const keys = Object.keys(V);
+let cur = new URLSearchParams(location.search).get("variant") || "A";
+if (!V[cur]) cur = "A";
+function render(){
+  const v = V[cur];
+  document.getElementById("app").innerHTML =
+    `<div class="intro"><b>${cur} - ${v.name}.</b> ${v.blurb}</div><div class="row">${v.screens().join("")}</div>`;
+  document.getElementById("lbl").textContent = `${cur} (${v.name})`;
+  const u = new URL(location); u.searchParams.set("variant", cur); history.replaceState(null,"",u);
+}
+const step = d => { cur = keys[(keys.indexOf(cur)+d+keys.length)%keys.length]; render(); };
+document.getElementById("prev").onclick=()=>step(-1);
+document.getElementById("next").onclick=()=>step(1);
+addEventListener("keydown", e => { if (e.target.closest("input,textarea,[contenteditable]")) return;
+  if (e.key==="ArrowLeft") step(-1); if (e.key==="ArrowRight") step(1); });
+if (new URLSearchParams(location.search).get("embed")) document.getElementById("sw").style.display="none";
+render();
+</script>
+</body>
+</html>
