@@ -16,3 +16,9 @@ probes/filter-capacity/results/
 
 # Dropped here by wrangler every time a pr-walkthrough is published
 .wrangler/
+
+# The app-categories prototype's fetched App Store data and the page built from
+# it. They carry Apple's listing text, which this public repo must not
+# republish; `bun prototypes/app-categories/fetch.ts` regenerates both.
+prototypes/app-categories/raw-data.json
+prototypes/app-categories/index.html
