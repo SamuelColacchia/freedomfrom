@@ -24,6 +24,19 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !model.contentsRevealed {
+                Button {
+                    Task { await model.revealContents() }
+                } label: {
+                    Text("show what they blocked")
+                        .font(.system(size: 12, weight: .light))
+                        .foregroundStyle(Quiet.whisper)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 14)
+                }
+                .buttonStyle(.plain)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(model.record.history.reversed().enumerated()), id: \.offset) {
@@ -55,14 +68,16 @@ struct HistoryView: View {
 
     private func row(_ closed: ClosedCommitment) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(what(closed))
+            // Hidden until Face ID or the device passcode passes; when it ran
+            // and how it ended are not contents (ADR 0012).
+            Text(model.contentsRevealed ? what(closed) : "hidden")
                 .font(.system(size: 16, weight: .light))
-                .foregroundStyle(Quiet.ink)
+                .foregroundStyle(model.contentsRevealed ? Quiet.ink : Quiet.faint)
 
             Text("\(span(closed)) · \(words(for: closed.outcome))")
                 .whisper()
 
-            if !closed.domains.isEmpty {
+            if model.contentsRevealed, !closed.domains.isEmpty {
                 Text(closed.domains.map(\.host).joined(separator: " · "))
                     .font(.system(size: 12, weight: .light))
                     .foregroundStyle(Quiet.faint)
@@ -98,6 +113,7 @@ struct HistoryView: View {
         case .completed: "Completed."
         case .completedDegraded: "Completed. Coverage was lost along the way."
         case .broken: "Broken."
+        case .unlocked: "Unlocked early."
         }
     }
 }

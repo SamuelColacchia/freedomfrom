@@ -22,50 +22,45 @@ final class UnlockCodeUITests: XCTestCase {
     func testTheCodeIsSetRefusesAWrongCodeAndRemovesWithTheRightOne() throws {
         let app = try launchOnTargets()
 
-        let link = app.buttons["unlock code"]
-        XCTAssertTrue(link.waitForExistence(timeout: 5), "No way to the unlock code.\n\(app.debugDescription)")
+        let link = app.buttons["settings"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5), "No way to Settings.\n\(app.debugDescription)")
         link.tap()
 
         guard app.staticTexts["No unlock code is set."].waitForExistence(timeout: 5) else {
             throw XCTSkip("A code is already set on this simulator, and only its holder can remove it.")
         }
 
-        try enter("2468", into: "new code", in: app)
-        try enter("2468", into: "new code again", in: app)
         app.buttons["Set code"].tap()
+        tap("2468", in: app)
+        tap("2468", in: app)
 
         XCTAssertTrue(
             app.staticTexts["An unlock code is set."].waitForExistence(timeout: 5),
             "Setting a code did not take.\n\(app.debugDescription)")
 
-        try enter("0000", into: "current code", in: app)
         app.buttons["Remove code"].tap()
+        tap("0000", in: app)
 
         XCTAssertTrue(
             app.staticTexts["That is not the current code."].waitForExistence(timeout: 5),
             "A wrong current code was not refused.\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts["An unlock code is set."].exists)
 
-        try enter("2468", into: "current code", in: app)
         app.buttons["Remove code"].tap()
+        tap("2468", in: app)
 
         XCTAssertTrue(
             app.staticTexts["No unlock code is set."].waitForExistence(timeout: 5),
             "The right current code did not remove it.\n\(app.debugDescription)")
     }
 
-    private func enter(_ text: String, into identifier: String, in app: XCUIApplication) throws {
-        let field = app.secureTextFields[identifier]
-        guard field.waitForExistence(timeout: 5) else {
-            throw XCTSkip("No \(identifier) field.\n\(app.debugDescription)")
+    /// One press per digit on the pad, each waited for, because the pad's
+    /// keys are the only buttons on the screen labelled with a single digit.
+    private func tap(_ digits: String, in app: XCUIApplication) {
+        for digit in digits {
+            let key = app.buttons[String(digit)]
+            XCTAssertTrue(key.waitForExistence(timeout: 5), "No \(digit) key.\n\(app.debugDescription)")
+            key.tap()
         }
-        for _ in 0..<4 {
-            field.tap()
-            if app.keyboards.firstMatch.waitForExistence(timeout: 2) {
-                field.typeText(text)
-                return
-            }
-        }
-        XCTFail("The \(identifier) field never took keyboard focus.\n\(app.debugDescription)")
     }
 }

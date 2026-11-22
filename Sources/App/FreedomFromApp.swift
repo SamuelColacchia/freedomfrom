@@ -14,7 +14,8 @@ struct FreedomFromApp: App {
 
 /// The root is always the current state of the one thing: a commitment running
 /// shows the countdown, none running shows the commitment you would make
-/// (ADR 0007). There is no hub, no tab bar, and no settings surface.
+/// (ADR 0007). There is no hub and no tab bar; the one settings surface is a
+/// spur holding the early unlock code (ADR 0012).
 struct RootView: View {
     @Bindable var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
@@ -40,8 +41,8 @@ struct RootView: View {
                     FirstRunView(model: model)
                 case .targets:
                     NavigationStack { TargetsView(model: model) }
-                case .countdown:
-                    NavigationStack { CountdownView(model: model) }
+                case .running:
+                    NavigationStack(path: $model.runningPath) { RunningView(model: model) }
                 case .ended:
                     EndedView(model: model)
                 }
@@ -55,6 +56,7 @@ struct RootView: View {
                 Task { await model.onForeground() }
             case .background:
                 wasBackgrounded = true
+                model.hideContents()
                 model.persist()
             default:
                 break

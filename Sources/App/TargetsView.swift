@@ -23,6 +23,7 @@ struct TargetsView: View {
     private enum Spur: Hashable {
         case commit
         case history
+        case settings
     }
 
     var body: some View {
@@ -86,6 +87,12 @@ struct TargetsView: View {
             QuietButton(title: "Choose apps") { pickerShown = true }
                 .padding(.bottom, 10)
 
+            if model.exceedsDomainBudget {
+                Text("Websites across everything running are limited to \(Record.domainBudget).")
+                    .whisper()
+                    .padding(.bottom, 10)
+            }
+
             NavigationLink(value: Spur.commit) {
                 Text("Next")
                     .font(.system(size: 15, weight: .light))
@@ -95,8 +102,16 @@ struct TargetsView: View {
                     .padding(.vertical, 17)
                     .overlay(Rectangle().stroke(Quiet.line, lineWidth: 1))
             }
-            .disabled(!model.canCommit)
-            .opacity(model.canCommit ? 1 : 0.25)
+            .disabled(!model.canCommit || model.exceedsDomainBudget)
+            .opacity(model.canCommit && !model.exceedsDomainBudget ? 1 : 0.25)
+
+            NavigationLink(value: Spur.settings) {
+                Text("settings")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundStyle(Quiet.link)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
+            }
 
             // Absent when there is no history rather than present and empty:
             // absence reads as absence (ADR 0007).
@@ -104,7 +119,7 @@ struct TargetsView: View {
                 NavigationLink(value: Spur.history) {
                     Text("what you have committed to before")
                         .font(.system(size: 12, weight: .light))
-                        .foregroundStyle(Quiet.faint)
+                        .foregroundStyle(Quiet.link)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 14)
                 }
@@ -119,6 +134,7 @@ struct TargetsView: View {
             switch spur {
             case .commit: CommitView(model: model)
             case .history: HistoryView(model: model)
+            case .settings: SettingsView(model: model)
             }
         }
     }
@@ -152,7 +168,7 @@ struct TargetsView: View {
                     } label: {
                         Text("remove")
                             .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(Quiet.faint)
+                            .foregroundStyle(Quiet.link)
                     }
                     .buttonStyle(.plain)
                 }
